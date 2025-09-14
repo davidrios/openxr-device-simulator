@@ -1,0 +1,16 @@
+[workspace]
+members = [ "client","runtime"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["David Rios <david.rios.gomes@gmail.com>"]
+edition = "2024"
+rust-version = "1.86"
+license = "Apache-2.0"
+repository = "https://github.com/davidrios/openxr-device-simulator"
+homepage = "https://github.com/davidrios/openxr-device-simulator"
+
+[workspace.dependencies]
+directories = "6.0.0"
+thiserror = "2.0.16"

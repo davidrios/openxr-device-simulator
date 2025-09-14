@@ -2,6 +2,8 @@ use openxr_sys as xr;
 
 use crate::{system::HMD_SYSTEM_ID, with_instance};
 
+pub mod swapchain;
+
 pub extern "system" fn enumerate_blend_modes(
     xr_instance: xr::Instance,
     system_id: xr::SystemId,

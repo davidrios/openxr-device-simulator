@@ -5,8 +5,9 @@ use std::{
 
 use openxr_sys as xr;
 
-use crate::{bind_api_fn, input, path, session, spaces, system, view, vulkan};
-use crate::{instance, rendering};
+use crate::{
+    bind_api_fn, event, input, instance, path, rendering, session, spaces, system, view, vulkan,
+};
 
 static LOGGING_INITED: atomic::AtomicBool = atomic::AtomicBool::new(false);
 
@@ -122,15 +123,23 @@ extern "system" fn xr_get_instance_proc_addr(
                 )),
 
                 "xrCreateSession" => Some(bind_api_fn!(xr::pfn::CreateSession, session::create)),
+                "xrAttachSessionActionSets" => Some(bind_api_fn!(
+                    xr::pfn::AttachSessionActionSets,
+                    session::attach_action_sets
+                )),
                 "xrDestroySession" => Some(bind_api_fn!(xr::pfn::DestroySession, session::destroy)),
 
                 "xrEnumerateReferenceSpaces" => Some(bind_api_fn!(
                     xr::pfn::EnumerateReferenceSpaces,
-                    spaces::enumerate_reference_spaces
+                    spaces::reference::enumerate
                 )),
                 "xrCreateReferenceSpace" => Some(bind_api_fn!(
                     xr::pfn::CreateReferenceSpace,
-                    spaces::create_reference_space
+                    spaces::reference::create
+                )),
+                "xrCreateActionSpace" => Some(bind_api_fn!(
+                    xr::pfn::CreateActionSpace,
+                    spaces::action::create
                 )),
                 "xrDestroySpace" => Some(bind_api_fn!(xr::pfn::DestroySpace, spaces::destroy)),
 
@@ -156,6 +165,21 @@ extern "system" fn xr_get_instance_proc_addr(
                     xr::pfn::EnumerateEnvironmentBlendModes,
                     rendering::enumerate_blend_modes
                 )),
+                "xrEnumerateSwapchainFormats" => Some(bind_api_fn!(
+                    xr::pfn::EnumerateSwapchainFormats,
+                    rendering::swapchain::enumerate_formats
+                )),
+                "xrCreateSwapchain" => Some(bind_api_fn!(
+                    xr::pfn::CreateSwapchain,
+                    rendering::swapchain::create
+                )),
+                "xrEnumerateSwapchainImages" => Some(bind_api_fn!(
+                    xr::pfn::EnumerateSwapchainImages,
+                    rendering::swapchain::enumerate_images
+                )),
+
+                "xrPollEvent" => Some(bind_api_fn!(xr::pfn::PollEvent, event::poll)),
+
                 _ => None,
             }
         };

@@ -41,7 +41,7 @@ pub extern "system" fn get_properties(
 
     let properties = unsafe { &mut *properties };
 
-    if properties.ty != xr::StructureType::INSTANCE_PROPERTIES {
+    if properties.ty != xr::StructureType::SYSTEM_PROPERTIES {
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 

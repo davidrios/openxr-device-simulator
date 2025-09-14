@@ -1,0 +1,6 @@
+{
+  "file_format_version": "1.0.0",
+  "runtime": {
+    "library_path": "../target/debug/libopenxr_device_simulator_runtime.so"
+  }
+}

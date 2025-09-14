@@ -1,0 +1,20 @@
+[package]
+name = "openxr-device-simulator-runtime"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+openxr-sys = "0.11.0"
+directories.workspace = true
+thiserror.workspace = true
+log = "0.4.28"
+env_logger = "0.11.8"
+ash = "0.38.0"
+
+[lib]
+crate-type = ["cdylib"]

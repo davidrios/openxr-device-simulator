@@ -1,5 +1,5 @@
-mod api;
 pub mod error;
+mod event;
 mod input;
 mod instance;
 mod loader;

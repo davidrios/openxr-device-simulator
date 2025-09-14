@@ -1,6 +1,6 @@
 use std::{
     cell::UnsafeCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{LazyLock, Mutex, atomic},
 };
 
@@ -74,11 +74,57 @@ pub extern "system" fn destroy(xr_obj: xr::Session) -> xr::Result {
     xr::Result::SUCCESS
 }
 
+pub extern "system" fn attach_action_sets(
+    xr_session: xr::Session,
+    attach_info: *const xr::SessionActionSetsAttachInfo,
+) -> xr::Result {
+    if attach_info.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let attach_info = unsafe { &*attach_info };
+
+    if attach_info.ty != xr::StructureType::SESSION_ACTION_SETS_ATTACH_INFO {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    if attach_info.count_action_sets == 0 || attach_info.action_sets.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    with_session!(xr_session, |session| {
+        for i in 0..attach_info.count_action_sets {
+            let item = unsafe { &*attach_info.action_sets.add(i as usize) };
+
+            if let Err(err) = session.attach_action_set(item.into_raw()) {
+                match err {
+                    Error::XrResult(res) => return res,
+                    _ => {
+                        log::error!("{err}");
+                        return xr::Result::ERROR_RUNTIME_FAILURE;
+                    }
+                }
+            }
+        }
+
+        xr::Result::SUCCESS
+    })
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SimulatedSessionSpace {
+    Reference,
+    Action,
+}
+
 #[derive(Debug)]
 pub struct SimulatedSession {
     instance_id: u64,
     id: u64,
-    space: Option<u64>,
+    space_ids: HashMap<SimulatedSessionSpace, u64>,
+    action_set_ids: HashSet<u64>,
+    swapchain_ids: HashSet<u64>,
+    state: xr::SessionState,
 }
 
 static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
@@ -97,17 +143,41 @@ impl SimulatedSession {
         Self {
             instance_id,
             id,
-            space: None,
+            space_ids: HashMap::new(),
+            action_set_ids: HashSet::new(),
+            swapchain_ids: HashSet::new(),
+            state: xr::SessionState::IDLE,
         }
     }
 
-    pub fn set_space(&mut self, space_id: u64) -> Result<()> {
-        if self.space.is_some() {
-            return Err(xr::Result::ERROR_RUNTIME_FAILURE.into());
-        }
+    pub fn id(&self) -> u64 {
+        self.id
+    }
 
-        self.space = Some(space_id);
+    pub fn set_space(&mut self, space_type: SimulatedSessionSpace, space_id: u64) -> Result<()> {
+        self.space_ids.insert(space_type, space_id);
+
         Ok(())
+    }
+
+    pub fn attach_action_set(&mut self, action_set_id: u64) -> Result<()> {
+        if !self.action_set_ids.insert(action_set_id) {
+            Err(xr::Result::ERROR_ACTIONSETS_ALREADY_ATTACHED.into())
+        } else {
+            log::debug!("attached action set {action_set_id}");
+
+            Ok(())
+        }
+    }
+
+    pub fn add_swapchain(&mut self, swapchain_id: u64) -> Result<()> {
+        if !self.swapchain_ids.insert(swapchain_id) {
+            Err(xr::Result::ERROR_ACTIONSETS_ALREADY_ATTACHED.into())
+        } else {
+            log::debug!("attached swapchain {swapchain_id}");
+
+            Ok(())
+        }
     }
 }
 

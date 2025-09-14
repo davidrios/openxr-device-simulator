@@ -68,7 +68,7 @@ pub extern "system" fn create(
 
         *xr_action_set = xr::ActionSet::from_raw(next_id);
 
-        instance.set_action_set(next_id)
+        instance.add_action_set(next_id)
     })
 }
 

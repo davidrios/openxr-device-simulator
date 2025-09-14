@@ -1,4 +1,8 @@
-use std::{collections::HashMap, ffi::CStr, sync::atomic};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::CStr,
+    sync::atomic,
+};
 
 use openxr_sys as xr;
 
@@ -30,7 +34,7 @@ pub struct SimulatedInstance {
     id: u64,
     state: InstanceState,
     session_id: Option<u64>,
-    action_set_id: Option<u64>,
+    action_set_ids: HashSet<u64>,
     paths: HashMap<u64, String>,
     interaction_profile_bindings: HashMap<u64, Vec<ActionBinding>>,
 }
@@ -41,7 +45,7 @@ impl SimulatedInstance {
             id,
             state: InstanceState::Created,
             session_id: None,
-            action_set_id: None,
+            action_set_ids: HashSet::new(),
             paths: HashMap::new(),
             interaction_profile_bindings: HashMap::new(),
         }
@@ -86,10 +90,9 @@ impl SimulatedInstance {
         }
     }
 
-    pub fn set_action_set(&mut self, action_set_id: u64) -> xr::Result {
+    pub fn add_action_set(&mut self, action_set_id: u64) -> xr::Result {
         if let InstanceState::SessionCreated = self.state {
-            self.action_set_id = Some(action_set_id);
-            self.state = InstanceState::ActionSetCreated;
+            self.action_set_ids.insert(action_set_id);
             xr::Result::SUCCESS
         } else {
             log::error!("unexpected state: {:?}", self.state);

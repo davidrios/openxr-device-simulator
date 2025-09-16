@@ -1,6 +1,6 @@
 use openxr_sys as xr;
 
-use crate::{system::HMD_SYSTEM_ID, with_instance};
+use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, with_instance};
 
 pub extern "system" fn enumerate_configurations(
     xr_instance: xr::Instance,
@@ -15,7 +15,7 @@ pub extern "system" fn enumerate_configurations(
 
     let count_out = unsafe { &mut *count_out };
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         if capacity_in == 0 {
             *count_out = 1;
             return xr::Result::SUCCESS;
@@ -30,9 +30,8 @@ pub extern "system" fn enumerate_configurations(
         }
 
         unsafe { *configuration_types = xr::ViewConfigurationType::PRIMARY_STEREO }
-
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }
 
 pub extern "system" fn get_configuration_properties(
@@ -55,11 +54,11 @@ pub extern "system" fn get_configuration_properties(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         properties.view_configuration_type = xr::ViewConfigurationType::PRIMARY_STEREO;
         properties.fov_mutable = xr::FALSE;
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }
 
 pub extern "system" fn enumerate_configuration_views(
@@ -80,7 +79,7 @@ pub extern "system" fn enumerate_configuration_views(
 
     let count_out = unsafe { &mut *count_out };
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         if capacity_in == 0 {
             *count_out = 2;
             return xr::Result::SUCCESS;
@@ -97,7 +96,7 @@ pub extern "system" fn enumerate_configuration_views(
         unsafe {
             // for left and right eyes
             for i in 0..2 {
-                *views.wrapping_add(i) = xr::ViewConfigurationView {
+                *views.add(i) = xr::ViewConfigurationView {
                     ty: (*views).ty,
                     next: std::ptr::null_mut(),
                     recommended_image_rect_width: 1024,
@@ -109,7 +108,6 @@ pub extern "system" fn enumerate_configuration_views(
                 };
             }
         };
-
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }

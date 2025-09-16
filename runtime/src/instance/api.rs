@@ -8,7 +8,7 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    error::{Error, Result},
+    error::{Error, Result, to_xr_result},
     event::create_queue,
     utils::copy_cstr_to_i8,
 };
@@ -17,19 +17,19 @@ use crate::{
 macro_rules! with_instance {
     ($xr_instance:expr, |$instance:ident| $expr:expr) => {{
         if $xr_instance == xr::Instance::NULL {
-            return xr::Result::ERROR_HANDLE_INVALID;
-        }
-
-        let instance_ptr = match $crate::instance::api::get_simulated_instance_cell($xr_instance) {
-            Ok(instance_ptr) => instance_ptr,
-            Err(err) => {
-                log::error!("error: {err}");
-                return openxr_sys::Result::ERROR_INSTANCE_LOST;
+            Err(xr::Result::ERROR_HANDLE_INVALID.into())
+        } else {
+            match $crate::instance::api::get_simulated_instance_cell($xr_instance) {
+                Ok(instance_ptr) => {
+                    let $instance = unsafe { &mut *instance_ptr };
+                    $expr
+                }
+                Err(err) => {
+                    log::error!("error: {err}");
+                    Err(openxr_sys::Result::ERROR_INSTANCE_LOST.into())
+                }
             }
-        };
-
-        let $instance = unsafe { &mut *instance_ptr };
-        $expr
+        }
     }};
 }
 
@@ -145,7 +145,7 @@ pub extern "system" fn create_from_instance(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_instance!(*xr_instance, |instance| instance.create(create_info))
+    to_xr_result(with_instance!(*xr_instance, |instance| instance.create(create_info)))
 }
 
 pub extern "system" fn get_properties(
@@ -161,5 +161,5 @@ pub extern "system" fn get_properties(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_instance!(xr_instance, |instance| instance.get_properties(properties))
+    to_xr_result(with_instance!(xr_instance, |instance| instance.get_properties(properties)))
 }

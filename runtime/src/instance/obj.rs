@@ -51,12 +51,12 @@ impl SimulatedInstance {
         }
     }
 
-    pub fn create(&mut self, create_info: &xr::InstanceCreateInfo) -> xr::Result {
+    pub fn create(&mut self, create_info: &xr::InstanceCreateInfo) -> Result<()> {
         log::debug!("[{}]: create_info: {:?}", self.id, create_info);
-        xr::Result::ERROR_RUNTIME_UNAVAILABLE
+        Err(xr::Result::ERROR_RUNTIME_UNAVAILABLE.into())
     }
 
-    pub fn get_properties(&mut self, properties: &mut xr::InstanceProperties) -> xr::Result {
+    pub fn get_properties(&mut self, properties: &mut xr::InstanceProperties) -> Result<()> {
         properties.runtime_version = xr::Version::new(0, 0, 1);
         copy_cstr_to_i8(
             "openxr-device-simulator".as_bytes(),
@@ -64,12 +64,12 @@ impl SimulatedInstance {
         );
         log::debug!("[{}]: get_properties: {:?}", self.id, properties);
 
-        xr::Result::SUCCESS
+        Ok(())
     }
 
     pub fn register_path(&mut self, path: &CStr) -> Result<u64> {
         let new_id = COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
-        self.paths.insert(new_id, path.to_string_lossy().into());
+        self.paths.insert(new_id, path.to_str()?.into());
         log::debug!(
             "[{}] registered path {} at {}",
             self.id,
@@ -79,24 +79,26 @@ impl SimulatedInstance {
         Ok(new_id)
     }
 
-    pub fn set_session(&mut self, session_id: u64) -> xr::Result {
+    pub fn set_session(&mut self, session_id: u64) -> Result<()> {
         if let InstanceState::Created = self.state {
             self.session_id = Some(session_id);
             self.state = InstanceState::SessionCreated;
-            xr::Result::SUCCESS
+            Ok(())
         } else {
-            log::error!("unexpected state: {:?}", self.state);
-            xr::Result::ERROR_RUNTIME_FAILURE
+            Err(format!("unexpected state: {:?}", self.state)
+                .as_str()
+                .into())
         }
     }
 
-    pub fn add_action_set(&mut self, action_set_id: u64) -> xr::Result {
+    pub fn add_action_set(&mut self, action_set_id: u64) -> Result<()> {
         if let InstanceState::SessionCreated = self.state {
             self.action_set_ids.insert(action_set_id);
-            xr::Result::SUCCESS
+            Ok(())
         } else {
-            log::error!("unexpected state: {:?}", self.state);
-            xr::Result::ERROR_RUNTIME_FAILURE
+            Err(format!("unexpected state: {:?}", self.state)
+                .as_str()
+                .into())
         }
     }
 

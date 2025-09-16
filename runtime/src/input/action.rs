@@ -8,7 +8,7 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    error::{Error, Result},
+    error::{Error, Result, to_xr_result},
     utils::create_identity_pose,
     with_action_set,
 };
@@ -16,16 +16,13 @@ use crate::{
 #[macro_export]
 macro_rules! with_action {
     ($xr_obj:expr, |$instance:ident| $expr:expr) => {{
-        let instance_ptr = match $crate::input::action::get_simulated_action_cell($xr_obj) {
-            Ok(instance_ptr) => instance_ptr,
-            Err(err) => {
-                log::error!("error: {err}");
-                return openxr_sys::Result::ERROR_RUNTIME_FAILURE;
+        match $crate::input::action::get_simulated_action_cell($xr_obj) {
+            Ok(instance_ptr) => {
+                let $instance = unsafe { &mut *instance_ptr };
+                $expr
             }
-        };
-
-        let $instance = unsafe { &mut *instance_ptr };
-        $expr
+            Err(err) => Err(err),
+        }
     }};
 }
 
@@ -44,7 +41,7 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_action_set!(xr_action_set, |action_set| {
+    to_xr_result(with_action_set!(xr_action_set, |action_set| {
         let mut action_instances = INSTANCES.lock().unwrap();
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         action_instances.insert(
@@ -52,13 +49,7 @@ pub extern "system" fn create(
             UnsafeCell::new(
                 match SimulatedAction::new(xr_action.into_raw(), next_id, create_info) {
                     Ok(set) => set,
-                    Err(err) => match err {
-                        Error::XrResult(res) => return res,
-                        _ => {
-                            log::error!("{err}");
-                            return xr::Result::ERROR_RUNTIME_FAILURE;
-                        }
-                    },
+                    Err(err) => return err.into(),
                 },
             ),
         );
@@ -69,18 +60,8 @@ pub extern "system" fn create(
 
         *xr_action = xr::Action::from_raw(next_id);
 
-        if let Err(err) = action_set.add_action(next_id) {
-            match err {
-                Error::XrResult(res) => res,
-                _ => {
-                    log::error!("{err}");
-                    xr::Result::ERROR_RUNTIME_FAILURE
-                }
-            }
-        } else {
-            xr::Result::SUCCESS
-        }
-    })
+        action_set.add_action(next_id)
+    }))
 }
 
 #[derive(Debug)]
@@ -136,7 +117,7 @@ impl SimulatedAction {
             action_set_id,
             id,
             name: name.into(),
-            localized_name: localized_name.to_string_lossy().into(),
+            localized_name: localized_name.to_str()?.into(),
             subaction_paths,
             input_value: match create_info.action_type {
                 xr::ActionType::BOOLEAN_INPUT => SimulatedActionValue::Boolean(false),

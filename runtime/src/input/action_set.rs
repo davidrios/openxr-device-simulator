@@ -8,23 +8,20 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    error::{Error, Result},
+    error::{Error, Result, to_xr_result},
     with_instance,
 };
 
 #[macro_export]
 macro_rules! with_action_set {
     ($xr_obj:expr, |$instance:ident| $expr:expr) => {{
-        let instance_ptr = match $crate::input::action_set::get_simulated_action_set_cell($xr_obj) {
-            Ok(instance_ptr) => instance_ptr,
-            Err(err) => {
-                log::error!("error: {err}");
-                return openxr_sys::Result::ERROR_RUNTIME_FAILURE;
+        match $crate::input::action_set::get_simulated_action_set_cell($xr_obj) {
+            Ok(instance_ptr) => {
+                let $instance = unsafe { &mut *instance_ptr };
+                $expr
             }
-        };
-
-        let $instance = unsafe { &mut *instance_ptr };
-        $expr
+            Err(err) => Err(err),
+        }
     }};
 }
 
@@ -43,7 +40,7 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_instance!(xr_instance, |instance| {
+    to_xr_result(with_instance!(xr_instance, |instance| {
         let mut session_instances = INSTANCES.lock().unwrap();
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         session_instances.insert(
@@ -51,13 +48,7 @@ pub extern "system" fn create(
             UnsafeCell::new(
                 match SimulatedActionSet::new(xr_instance.into_raw(), next_id, create_info) {
                     Ok(set) => set,
-                    Err(err) => match err {
-                        Error::XrResult(res) => return res,
-                        _ => {
-                            log::error!("{err}");
-                            return xr::Result::ERROR_RUNTIME_FAILURE;
-                        }
-                    },
+                    Err(err) => return err.into(),
                 },
             ),
         );
@@ -69,7 +60,7 @@ pub extern "system" fn create(
         *xr_action_set = xr::ActionSet::from_raw(next_id);
 
         instance.add_action_set(next_id)
-    })
+    }))
 }
 
 pub extern "system" fn destroy(xr_obj: xr::ActionSet) -> xr::Result {
@@ -114,7 +105,7 @@ impl SimulatedActionSet {
             instance_id,
             id,
             name: name.into(),
-            localized_name: localized_name.to_string_lossy().into(),
+            localized_name: localized_name.to_str()?.into(),
             priority: create_info.priority,
             actions: Vec::new(),
         })

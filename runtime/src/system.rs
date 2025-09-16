@@ -1,6 +1,6 @@
 use openxr_sys as xr;
 
-use crate::{utils::copy_cstr_to_i8, with_instance};
+use crate::{error::to_xr_result, utils::copy_cstr_to_i8, with_instance};
 
 pub const HMD_SYSTEM_ID: u64 = 1;
 
@@ -20,14 +20,14 @@ pub extern "system" fn get_system(
 
     log::debug!("get_system: {:?}", info);
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         if info.form_factor == xr::FormFactor::HEAD_MOUNTED_DISPLAY {
             *system_id = xr::SystemId::from_raw(HMD_SYSTEM_ID);
-            xr::Result::SUCCESS
+            Ok(())
         } else {
-            xr::Result::ERROR_FORM_FACTOR_UNSUPPORTED
+            Err(xr::Result::ERROR_FORM_FACTOR_UNSUPPORTED.into())
         }
-    })
+    }))
 }
 
 pub extern "system" fn get_properties(
@@ -45,7 +45,7 @@ pub extern "system" fn get_properties(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         properties.system_id = system_id;
         properties.vendor_id = 0x079c98d4;
         copy_cstr_to_i8(
@@ -59,9 +59,8 @@ pub extern "system" fn get_properties(
         };
         properties.tracking_properties.orientation_tracking = xr::TRUE;
         properties.tracking_properties.position_tracking = xr::TRUE;
-    });
 
-    log::debug!("get_properties({:?}): {:?}", system_id, &properties);
-
-    xr::Result::SUCCESS
+        log::debug!("get_properties({:?}): {:?}", system_id, &properties);
+        Ok(())
+    }))
 }

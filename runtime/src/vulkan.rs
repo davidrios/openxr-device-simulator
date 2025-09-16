@@ -3,7 +3,7 @@ use std::ffi::c_char;
 use ash::vk::Handle;
 use openxr_sys as xr;
 
-use crate::{system::HMD_SYSTEM_ID, with_instance};
+use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, with_instance};
 
 pub extern "system" fn get_graphics_requirements(
     xr_instance: xr::Instance,
@@ -20,11 +20,11 @@ pub extern "system" fn get_graphics_requirements(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         requirements.min_api_version_supported = xr::Version::new(1, 0, 0);
         requirements.max_api_version_supported = xr::Version::new(1, 3, 0);
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }
 
 pub extern "system" fn get_graphics_device(
@@ -66,11 +66,11 @@ pub extern "system" fn get_graphics_device(
         }
     };
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         unsafe { *vk_physical_device = handle }
         log::debug!("returning graphics device {handle:x}");
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }
 
 pub extern "system" fn get_instance_extensions(
@@ -86,7 +86,7 @@ pub extern "system" fn get_instance_extensions(
 
     let count_out = unsafe { &mut *count_out };
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         if capacity_in == 0 {
             *count_out = 1;
             return xr::Result::SUCCESS;
@@ -97,9 +97,8 @@ pub extern "system" fn get_instance_extensions(
         }
 
         unsafe { *buffer = 0 }
-
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }
 
 pub extern "system" fn get_device_extensions(
@@ -115,7 +114,7 @@ pub extern "system" fn get_device_extensions(
 
     let count_out = unsafe { &mut *count_out };
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         if capacity_in == 0 {
             *count_out = 1;
             return xr::Result::SUCCESS;
@@ -126,7 +125,6 @@ pub extern "system" fn get_device_extensions(
         }
 
         unsafe { *buffer = 0 }
-
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }

@@ -1,6 +1,6 @@
 use openxr_sys as xr;
 
-use crate::{system::HMD_SYSTEM_ID, with_instance};
+use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, with_instance};
 
 pub mod swapchain;
 
@@ -24,7 +24,7 @@ pub extern "system" fn enumerate_blend_modes(
 
     let count_out = unsafe { &mut *count_out };
 
-    with_instance!(xr_instance, |_instance| {
+    to_xr_result(with_instance!(xr_instance, |_instance| {
         if capacity_in == 0 {
             *count_out = 1;
             return xr::Result::SUCCESS;
@@ -40,6 +40,6 @@ pub extern "system" fn enumerate_blend_modes(
 
         unsafe { *blend_mode = xr::EnvironmentBlendMode::OPAQUE }
 
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }

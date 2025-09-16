@@ -14,6 +14,9 @@ pub enum Error {
 
     #[error("XrResult error: {0}")]
     XrResult(xr::Result),
+
+    #[error("Utf8Error: {0}")]
+    Utf8Error(#[from] std::str::Utf8Error),
 }
 
 impl From<&str> for Error {
@@ -37,7 +40,10 @@ impl From<xr::Result> for Error {
 impl From<Error> for xr::Result {
     fn from(err: Error) -> Self {
         log::error!("error: {err}");
-        Self::ERROR_RUNTIME_FAILURE
+        match err {
+            Error::XrResult(res) => res,
+            _ => Self::ERROR_RUNTIME_FAILURE,
+        }
     }
 }
 
@@ -46,9 +52,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub fn to_xr_result<T>(value: Result<T>) -> xr::Result {
     match value {
         Ok(_) => xr::Result::SUCCESS,
-        Err(err) => match err {
-            Error::XrResult(res) => res,
-            _ => xr::Result::ERROR_RUNTIME_FAILURE,
-        },
+        Err(err) => err.into(),
     }
 }

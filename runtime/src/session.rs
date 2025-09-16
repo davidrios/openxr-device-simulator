@@ -7,7 +7,7 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    error::{Error, Result},
+    error::{Error, Result, to_xr_result},
     event::{Event, schedule_event},
     loader::START_TIME,
     system::HMD_SYSTEM_ID,
@@ -17,16 +17,16 @@ use crate::{
 #[macro_export]
 macro_rules! with_session {
     ($xr_session:expr, |$instance:ident| $expr:expr) => {{
-        let instance_ptr = match $crate::session::get_simulated_session_cell($xr_session) {
-            Ok(instance_ptr) => instance_ptr,
+        match $crate::session::get_simulated_session_cell($xr_session) {
+            Ok(instance_ptr) => {
+                let $instance = unsafe { &mut *instance_ptr };
+                $expr
+            }
             Err(err) => {
                 log::error!("error: {err}");
-                return openxr_sys::Result::ERROR_SESSION_LOST;
+                Err(openxr_sys::Result::ERROR_SESSION_LOST.into())
             }
-        };
-
-        let $instance = unsafe { &mut *instance_ptr };
-        $expr
+        }
     }};
 }
 
@@ -49,7 +49,7 @@ pub extern "system" fn create(
         return xr::Result::ERROR_SYSTEM_INVALID;
     }
 
-    with_instance!(xr_instance, |instance| {
+    to_xr_result(with_instance!(xr_instance, |instance| {
         let mut session_instances = INSTANCES.lock().unwrap();
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         session_instances.insert(
@@ -62,7 +62,7 @@ pub extern "system" fn create(
         log::debug!("create: {:?}", create_info);
 
         instance.set_session(next_id)
-    })
+    }))
 }
 
 pub extern "system" fn destroy(xr_obj: xr::Session) -> xr::Result {
@@ -94,23 +94,16 @@ pub extern "system" fn attach_action_sets(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_session!(xr_session, |session| {
+    to_xr_result(with_session!(xr_session, |session| {
         for i in 0..attach_info.count_action_sets {
             let item = unsafe { &*attach_info.action_sets.add(i as usize) };
 
             if let Err(err) = session.attach_action_set(item.into_raw()) {
-                match err {
-                    Error::XrResult(res) => return res,
-                    _ => {
-                        log::error!("{err}");
-                        return xr::Result::ERROR_RUNTIME_FAILURE;
-                    }
-                }
+                return err.into();
             }
         }
-
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

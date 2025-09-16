@@ -7,24 +7,20 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    error::{Error, Result},
+    error::{Error, Result, to_xr_result},
     with_session,
 };
 
 #[macro_export]
 macro_rules! with_swapchain {
     ($xr_obj:expr, |$instance:ident| $expr:expr) => {{
-        let instance_ptr = match $crate::rendering::swapchain::get_simulated_swapchain_cell($xr_obj)
-        {
-            Ok(instance_ptr) => instance_ptr,
-            Err(err) => {
-                log::error!("error: {err}");
-                return openxr_sys::Result::ERROR_RUNTIME_FAILURE;
+        match $crate::rendering::swapchain::get_simulated_swapchain_cell($xr_obj) {
+            Ok(instance_ptr) => {
+                let $instance = unsafe { &mut *instance_ptr };
+                $expr
             }
-        };
-
-        let $instance = unsafe { &mut *instance_ptr };
-        $expr
+            Err(err) => Err(err),
+        }
     }};
 }
 
@@ -49,7 +45,7 @@ pub extern "system" fn enumerate_formats(
 ) -> xr::Result {
     let count_out = unsafe { &mut *count_out };
 
-    with_session!(xr_session, |_session| {
+    to_xr_result(with_session!(xr_session, |_session| {
         if capacity_in == 0 {
             *count_out = SUPPORTED_SWAPCHAIN_FORMATS.len() as u32;
             return xr::Result::SUCCESS;
@@ -69,8 +65,8 @@ pub extern "system" fn enumerate_formats(
             }
         }
 
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }
 
 pub extern "system" fn create(
@@ -88,7 +84,7 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_session!(xr_session, |session| {
+    to_xr_result(with_session!(xr_session, |session| {
         let mut swapchain_instances = INSTANCES.lock().unwrap();
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         swapchain_instances.insert(
@@ -96,13 +92,7 @@ pub extern "system" fn create(
             UnsafeCell::new(
                 match SimulatedSwapchain::new(xr_session.into_raw(), next_id, create_info) {
                     Ok(set) => set,
-                    Err(err) => match err {
-                        Error::XrResult(res) => return res,
-                        _ => {
-                            log::error!("{err}");
-                            return xr::Result::ERROR_RUNTIME_FAILURE;
-                        }
-                    },
+                    Err(err) => return err.into(),
                 },
             ),
         );
@@ -113,18 +103,8 @@ pub extern "system" fn create(
 
         *xr_swapchain = xr::Swapchain::from_raw(next_id);
 
-        if let Err(err) = session.add_swapchain(next_id) {
-            match err {
-                Error::XrResult(res) => res,
-                _ => {
-                    log::error!("{err}");
-                    xr::Result::ERROR_RUNTIME_FAILURE
-                }
-            }
-        } else {
-            xr::Result::SUCCESS
-        }
-    })
+        session.add_swapchain(next_id)
+    }))
 }
 
 pub extern "system" fn enumerate_images(
@@ -135,7 +115,7 @@ pub extern "system" fn enumerate_images(
 ) -> xr::Result {
     let count_out = unsafe { &mut *count_out };
 
-    with_swapchain!(xr_swapchain, |swapchain| {
+    to_xr_result(with_swapchain!(xr_swapchain, |swapchain| {
         if capacity_in == 0 {
             *count_out = swapchain.array_size;
             return xr::Result::SUCCESS;
@@ -158,8 +138,8 @@ pub extern "system" fn enumerate_images(
             log::debug!("{item:?}");
         }
 
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }
 
 #[derive(Debug)]

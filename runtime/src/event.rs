@@ -18,12 +18,9 @@ macro_rules! with_event_queue {
         match $crate::event::get_event_queue_cell($xr_obj) {
             Ok(instance_ptr) => {
                 let $instance = unsafe { &mut *instance_ptr };
-                Ok($expr)
+                $expr
             }
-            Err(err) => {
-                log::error!("error: {err}");
-                Err(openxr_sys::Result::ERROR_RUNTIME_FAILURE.into())
-            }
+            Err(err) => Err(err),
         }
     }};
 }
@@ -38,17 +35,21 @@ pub extern "system" fn poll(
 
     let event_data = unsafe { &mut *event_data };
 
-    let queue_id = with_instance!(xr_instance, |_instance| xr_instance.into_raw());
-    let res = with_event_queue!(queue_id, |queue| {
+    let res: Result<u64> = with_instance!(xr_instance, |_instance| Ok(xr_instance.into_raw()));
+    let queue_id = match res {
+        Ok(queue_id) => queue_id,
+        Err(err) => return err.into(),
+    };
+
+    to_xr_result(with_event_queue!(queue_id, |queue| {
         if let Some(item) = queue.pop_front() {
             log::debug!("polled event {:?}", item.ty);
             event_data.ty = item.ty;
             let dest_slice = &mut event_data.varying[..item.buf.len()];
             dest_slice.copy_from_slice(&item.buf);
         }
-    });
-
-    to_xr_result(res)
+        Ok(())
+    }))
 }
 
 pub fn create_queue(queue_id: u64) -> Result<()> {
@@ -121,5 +122,6 @@ pub fn schedule_event(queue_id: u64, event: &Event) -> Result<()> {
             ty: unsafe { *(ptr as *const xr::StructureType) },
             buf: buf.into_boxed_slice(),
         });
+        Ok(())
     })
 }

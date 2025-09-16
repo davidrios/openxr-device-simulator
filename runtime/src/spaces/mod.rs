@@ -7,7 +7,7 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    error::{Error, Result},
+    error::Result,
     session::{SimulatedSession, SimulatedSessionSpace},
 };
 
@@ -15,7 +15,7 @@ pub mod action;
 pub mod reference;
 
 pub fn create(session: &mut SimulatedSession, space: SimulatedSpaceType) -> Result<u64> {
-    let mut spaces = INSTANCES.lock().unwrap();
+    let mut spaces = INSTANCES.lock()?;
     let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
     let session_space = match &space {
         SimulatedSpaceType::Reference(_) => SimulatedSessionSpace::Reference,
@@ -24,30 +24,12 @@ pub fn create(session: &mut SimulatedSession, space: SimulatedSpaceType) -> Resu
 
     spaces.insert(
         next_id,
-        UnsafeCell::new(match SimulatedSpace::new(session.id(), next_id, space) {
-            Ok(set) => set,
-            Err(err) => match err {
-                Error::XrResult(res) => return Err(res.into()),
-                _ => {
-                    log::error!("{err}");
-                    return Err(xr::Result::ERROR_RUNTIME_FAILURE.into());
-                }
-            },
-        }),
+        UnsafeCell::new(SimulatedSpace::new(session.id(), next_id, space)?),
     );
 
     log::debug!("create space: {:?}", unsafe { &*spaces[&next_id].get() });
 
-    if let Err(err) = session.set_space(session_space, next_id) {
-        match err {
-            Error::XrResult(res) => return Err(res.into()),
-            _ => {
-                log::error!("{err}");
-                return Err(xr::Result::ERROR_RUNTIME_FAILURE.into());
-            }
-        }
-    }
-
+    session.set_space(session_space, next_id)?;
     Ok(next_id)
 }
 

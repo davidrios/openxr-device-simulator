@@ -2,7 +2,8 @@ use std::ffi::{CStr, c_char};
 
 use openxr_sys as xr;
 
-use crate::{error::Error, with_instance};
+use crate::{error::to_xr_result, with_instance};
+
 pub extern "system" fn string_to_path(
     xr_instance: xr::Instance,
     path: *const c_char,
@@ -14,18 +15,11 @@ pub extern "system" fn string_to_path(
 
     let (path, xr_path) = unsafe { (CStr::from_ptr(path), &mut *xr_path) };
 
-    with_instance!(xr_instance, |instance| {
+    to_xr_result(with_instance!(xr_instance, |instance| {
         *xr_path = xr::Path::from_raw(match instance.register_path(path) {
             Ok(id) => id,
-            Err(err) => match err {
-                Error::XrResult(res) => return res,
-                _ => {
-                    log::error!("{err}");
-                    return xr::Result::ERROR_RUNTIME_FAILURE;
-                }
-            },
+            Err(err) => return err.into(),
         });
-
-        xr::Result::SUCCESS
-    })
+        Ok(())
+    }))
 }

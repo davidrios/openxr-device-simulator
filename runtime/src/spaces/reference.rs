@@ -1,6 +1,6 @@
 use openxr_sys as xr;
 
-use crate::with_session;
+use crate::{error::to_xr_result, with_session};
 
 pub extern "system" fn enumerate(
     xr_session: xr::Session,
@@ -10,7 +10,7 @@ pub extern "system" fn enumerate(
 ) -> xr::Result {
     let count_out = unsafe { &mut *count_out };
 
-    with_session!(xr_session, |_session| {
+    to_xr_result(with_session!(xr_session, |_session| {
         if capacity_in == 0 {
             *count_out = 3;
             return xr::Result::SUCCESS;
@@ -25,9 +25,9 @@ pub extern "system" fn enumerate(
             *space_types.add(1) = xr::ReferenceSpaceType::LOCAL;
             *space_types.add(2) = xr::ReferenceSpaceType::LOCAL_FLOOR;
         }
-    });
 
-    xr::Result::SUCCESS
+        Ok(())
+    }))
 }
 
 pub extern "system" fn create(
@@ -45,27 +45,20 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    with_session!(xr_session, |session| {
-        let space_id = match super::create(
+    to_xr_result(with_session!(xr_session, |session| {
+        match super::create(
             session,
             super::SimulatedSpaceType::Reference(SimulatedReferenceSpace {
                 pose: create_info.pose_in_reference_space,
             }),
         ) {
-            Ok(space_id) => space_id,
-            Err(err) => match err {
-                crate::error::Error::XrResult(res) => return res,
-                _ => {
-                    log::error!("{err}");
-                    return xr::Result::ERROR_RUNTIME_FAILURE;
-                }
-            },
-        };
-
-        *xr_space = xr::Space::from_raw(space_id);
-
-        xr::Result::SUCCESS
-    })
+            Ok(space_id) => {
+                *xr_space = xr::Space::from_raw(space_id);
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
+    }))
 }
 
 #[derive(Debug)]

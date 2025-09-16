@@ -8,6 +8,8 @@ use openxr_sys as xr;
 
 use crate::{
     error::{Error, Result},
+    event::{Event, schedule_event},
+    loader::START_TIME,
     system::HMD_SYSTEM_ID,
     with_instance,
 };
@@ -154,8 +156,30 @@ impl SimulatedSession {
         self.id
     }
 
+    pub fn check_ready(&mut self) -> Result<()> {
+        if let xr::SessionState::IDLE = self.state {
+            if !self.space_ids.is_empty()
+                && !self.swapchain_ids.is_empty()
+                && !self.action_set_ids.is_empty()
+            {
+                self.state = xr::SessionState::READY;
+                schedule_event(
+                    self.instance_id,
+                    Event::SessionStateChanged {
+                        session: xr::Session::from_raw(self.id),
+                        state: self.state,
+                        time: START_TIME.elapsed().into(),
+                    },
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn set_space(&mut self, space_type: SimulatedSessionSpace, space_id: u64) -> Result<()> {
         self.space_ids.insert(space_type, space_id);
+        self.check_ready()?;
 
         Ok(())
     }
@@ -165,6 +189,7 @@ impl SimulatedSession {
             Err(xr::Result::ERROR_ACTIONSETS_ALREADY_ATTACHED.into())
         } else {
             log::debug!("attached action set {action_set_id}");
+            self.check_ready()?;
 
             Ok(())
         }
@@ -175,6 +200,7 @@ impl SimulatedSession {
             Err(xr::Result::ERROR_ACTIONSETS_ALREADY_ATTACHED.into())
         } else {
             log::debug!("attached swapchain {swapchain_id}");
+            self.check_ready()?;
 
             Ok(())
         }

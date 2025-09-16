@@ -1,6 +1,7 @@
 use std::{
     ffi::{CStr, c_char},
-    sync::atomic,
+    sync::{LazyLock, atomic},
+    time::{Duration, Instant},
 };
 
 use openxr_sys as xr;
@@ -10,6 +11,8 @@ use crate::{
 };
 
 static LOGGING_INITED: atomic::AtomicBool = atomic::AtomicBool::new(false);
+pub static START_TIME: LazyLock<Instant> =
+    LazyLock::new(|| Instant::now() - Duration::from_secs(60 * 60 * 24));
 
 #[unsafe(no_mangle)]
 pub extern "C" fn xrNegotiateLoaderRuntimeInterface(

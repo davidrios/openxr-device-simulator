@@ -1,5 +1,5 @@
 use openxr_sys as xr;
-use std::ptr;
+use std::{ptr, time::Duration};
 
 #[macro_export]
 macro_rules! bind_api_fn {
@@ -15,6 +15,21 @@ pub fn copy_cstr_to_i8<const MAX: usize>(src: &[u8], dst: &mut [i8; MAX]) {
     }
 
     unsafe { ptr::copy_nonoverlapping(src.as_ptr() as *const i8, dst.as_mut_ptr(), src.len()) };
+}
+
+#[derive(Debug)]
+pub struct MyTime(xr::Time);
+
+impl From<MyTime> for xr::Time {
+    fn from(value: MyTime) -> Self {
+        value.0
+    }
+}
+
+impl From<Duration> for MyTime {
+    fn from(value: Duration) -> Self {
+        Self(xr::Time::from_nanos(value.as_nanos().try_into().unwrap()))
+    }
 }
 
 pub fn create_identity_pose() -> xr::Posef {

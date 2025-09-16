@@ -9,6 +9,7 @@ use openxr_sys as xr;
 
 use crate::{
     error::{Error, Result},
+    event::create_queue,
     utils::copy_cstr_to_i8,
 };
 
@@ -89,12 +90,18 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    let mut instances = INSTANCES.lock().unwrap();
     let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
-    instances.insert(next_id, UnsafeCell::new(SimulatedInstance::new(next_id)));
+    INSTANCES
+        .lock()
+        .unwrap()
+        .insert(next_id, UnsafeCell::new(SimulatedInstance::new(next_id)));
 
     unsafe {
         *xr_instance = xr::Instance::from_raw(next_id);
+    }
+
+    if let Err(err) = create_queue(next_id) {
+        return err.into();
     }
 
     log::debug!("created new instance: {next_id}, {:?}", unsafe {

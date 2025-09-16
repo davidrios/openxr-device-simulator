@@ -20,8 +20,8 @@ pub fn copy_cstr_to_i8<const MAX: usize>(src: &[u8], dst: &mut [i8; MAX]) {
 #[derive(Debug)]
 pub struct MyTime(xr::Time);
 
-impl From<MyTime> for xr::Time {
-    fn from(value: MyTime) -> Self {
+impl From<&MyTime> for xr::Time {
+    fn from(value: &MyTime) -> Self {
         value.0
     }
 }

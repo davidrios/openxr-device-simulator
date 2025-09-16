@@ -89,7 +89,7 @@ pub enum Event {
 
 const SIZEOF_TY_NEXT: usize = std::mem::size_of::<xr::EventDataBaseHeader>();
 
-pub fn schedule_event(queue_id: u64, event: Event) -> Result<()> {
+pub fn schedule_event(queue_id: u64, event: &Event) -> Result<()> {
     let (ptr, size) = match event {
         Event::SessionStateChanged {
             session,
@@ -100,8 +100,8 @@ pub fn schedule_event(queue_id: u64, event: Event) -> Result<()> {
             let xr_event = xr::EventDataSessionStateChanged {
                 ty,
                 next: std::ptr::null_mut(),
-                session,
-                state,
+                session: *session,
+                state: *state,
                 time: time.into(),
             };
             let size = std::mem::size_of::<xr::EventDataSessionStateChanged>();

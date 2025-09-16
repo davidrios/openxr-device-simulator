@@ -165,7 +165,7 @@ impl SimulatedSession {
                 self.state = xr::SessionState::READY;
                 schedule_event(
                     self.instance_id,
-                    Event::SessionStateChanged {
+                    &Event::SessionStateChanged {
                         session: xr::Session::from_raw(self.id),
                         state: self.state,
                         time: START_TIME.elapsed().into(),

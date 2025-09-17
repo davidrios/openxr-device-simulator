@@ -130,6 +130,12 @@ extern "system" fn xr_get_instance_proc_addr(
                     xr::pfn::AttachSessionActionSets,
                     session::attach_action_sets
                 )),
+                "xrBeginSession" => Some(bind_api_fn!(xr::pfn::BeginSession, session::begin)),
+                "xrRequestExitSession" => Some(bind_api_fn!(
+                    xr::pfn::RequestExitSession,
+                    session::request_exit
+                )),
+                "xrEndSession" => Some(bind_api_fn!(xr::pfn::EndSession, session::end)),
                 "xrDestroySession" => Some(bind_api_fn!(xr::pfn::DestroySession, session::destroy)),
 
                 "xrEnumerateReferenceSpaces" => Some(bind_api_fn!(
@@ -163,6 +169,10 @@ extern "system" fn xr_get_instance_proc_addr(
                     xr::pfn::SuggestInteractionProfileBindings,
                     input::binding::suggest_interaction_profile
                 )),
+
+                "xrWaitFrame" => Some(bind_api_fn!(xr::pfn::WaitFrame, rendering::frame::wait)),
+                "xrBeginFrame" => Some(bind_api_fn!(xr::pfn::BeginFrame, rendering::frame::begin)),
+                "xrEndFrame" => Some(bind_api_fn!(xr::pfn::EndFrame, rendering::frame::end)),
 
                 "xrEnumerateEnvironmentBlendModes" => Some(bind_api_fn!(
                     xr::pfn::EnumerateEnvironmentBlendModes,

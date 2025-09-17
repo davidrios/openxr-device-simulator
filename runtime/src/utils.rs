@@ -17,11 +17,11 @@ pub fn copy_cstr_to_i8<const MAX: usize>(src: &[u8], dst: &mut [i8; MAX]) {
     unsafe { ptr::copy_nonoverlapping(src.as_ptr() as *const i8, dst.as_mut_ptr(), src.len()) };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct MyTime(xr::Time);
 
-impl From<&MyTime> for xr::Time {
-    fn from(value: &MyTime) -> Self {
+impl From<MyTime> for xr::Time {
+    fn from(value: MyTime) -> Self {
         value.0
     }
 }

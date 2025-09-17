@@ -106,6 +106,35 @@ pub extern "system" fn attach_action_sets(
     }))
 }
 
+pub extern "system" fn begin(
+    xr_session: xr::Session,
+    begin_info: *const xr::SessionBeginInfo,
+) -> xr::Result {
+    if begin_info.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let begin_info = unsafe { &*begin_info };
+
+    if begin_info.ty != xr::StructureType::SESSION_BEGIN_INFO {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    if begin_info.primary_view_configuration_type != xr::ViewConfigurationType::PRIMARY_STEREO {
+        return xr::Result::ERROR_VIEW_CONFIGURATION_TYPE_UNSUPPORTED;
+    }
+
+    to_xr_result(with_session!(xr_session, |session| session.begin()))
+}
+
+pub extern "system" fn request_exit(xr_session: xr::Session) -> xr::Result {
+    to_xr_result(with_session!(xr_session, |session| session.request_exit()))
+}
+
+pub extern "system" fn end(xr_session: xr::Session) -> xr::Result {
+    to_xr_result(with_session!(xr_session, |session| session.end()))
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SimulatedSessionSpace {
     Reference,
@@ -120,6 +149,7 @@ pub struct SimulatedSession {
     action_set_ids: HashSet<u64>,
     swapchain_ids: HashSet<u64>,
     state: xr::SessionState,
+    is_running: bool,
 }
 
 static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
@@ -142,6 +172,7 @@ impl SimulatedSession {
             action_set_ids: HashSet::new(),
             swapchain_ids: HashSet::new(),
             state: xr::SessionState::IDLE,
+            is_running: false,
         }
     }
 
@@ -197,6 +228,63 @@ impl SimulatedSession {
 
             Ok(())
         }
+    }
+
+    pub fn begin(&mut self) -> Result<()> {
+        if self.is_running {
+            return Err(xr::Result::ERROR_SESSION_RUNNING.into());
+        }
+
+        if !matches!(self.state, xr::SessionState::READY) {
+            return Err(xr::Result::ERROR_SESSION_NOT_READY.into());
+        }
+
+        self.is_running = true;
+        log::debug!("{}: session began", self.id);
+        Ok(())
+    }
+
+    pub fn request_exit(&mut self) -> Result<()> {
+        if !self.is_running {
+            return Err(xr::Result::ERROR_SESSION_NOT_RUNNING.into());
+        }
+
+        self.state = xr::SessionState::STOPPING;
+        schedule_event(
+            self.instance_id,
+            &Event::SessionStateChanged {
+                session: xr::Session::from_raw(self.id),
+                state: self.state,
+                time: START_TIME.elapsed().into(),
+            },
+        )?;
+
+        Ok(())
+    }
+
+    pub fn end(&mut self) -> Result<()> {
+        if !self.is_running {
+            return Err(xr::Result::ERROR_SESSION_NOT_RUNNING.into());
+        }
+
+        if !matches!(self.state, xr::SessionState::STOPPING) {
+            return Err(xr::Result::ERROR_SESSION_NOT_STOPPING.into());
+        }
+
+        self.is_running = false;
+        self.state = xr::SessionState::IDLE;
+        schedule_event(
+            self.instance_id,
+            &Event::SessionStateChanged {
+                session: xr::Session::from_raw(self.id),
+                state: self.state,
+                time: START_TIME.elapsed().into(),
+            },
+        )?;
+
+        // self.check_ready()?;
+
+        Ok(())
     }
 }
 

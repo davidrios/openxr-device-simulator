@@ -103,7 +103,7 @@ pub fn schedule_event(queue_id: u64, event: &Event) -> Result<()> {
                 next: std::ptr::null_mut(),
                 session: *session,
                 state: *state,
-                time: time.into(),
+                time: (*time).into(),
             };
             let size = std::mem::size_of::<xr::EventDataSessionStateChanged>();
             let ptr = &xr_event as *const _ as *const u8;

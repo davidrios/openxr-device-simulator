@@ -126,7 +126,10 @@ pub extern "system" fn enumerate_images(
         }
 
         if images.is_null()
-        // || unsafe { *images }.ty != xr::StructureType::SWAPCHAIN_IMAGE_VULKAN_KHR
+            || !matches!(
+                unsafe { *images }.ty,
+                xr::StructureType::SWAPCHAIN_IMAGE_VULKAN_KHR
+            )
         {
             return xr::Result::ERROR_VALIDATION_FAILURE;
         }

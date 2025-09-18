@@ -1,7 +1,7 @@
 use std::{
     cell::UnsafeCell,
     collections::HashMap,
-    ffi::{CStr, CString},
+    ffi::{CStr, CString, c_char},
     sync::{LazyLock, Mutex, atomic},
 };
 
@@ -10,7 +10,7 @@ use openxr_sys as xr;
 use crate::{
     error::{Error, Result, to_xr_result},
     utils::create_identity_pose,
-    with_action_set,
+    with_action_set, with_session,
 };
 
 #[macro_export]
@@ -61,6 +61,57 @@ pub extern "system" fn create(
         *xr_action = xr::Action::from_raw(next_id);
 
         action_set.add_action(next_id)
+    }))
+}
+
+pub extern "system" fn destroy(xr_obj: xr::Action) -> xr::Result {
+    if xr_obj == xr::Action::NULL {
+        return xr::Result::ERROR_HANDLE_INVALID;
+    }
+
+    let instance_id = xr_obj.into_raw();
+
+    log::debug!("destroyed action {instance_id} (todo)");
+    xr::Result::SUCCESS
+}
+
+pub extern "system" fn enumerate_bound_sources(
+    xr_session: xr::Session,
+    info: *const xr::BoundSourcesForActionEnumerateInfo,
+    _capacity_in: u32,
+    count_out: *mut u32,
+    _sources: *mut xr::Path,
+) -> xr::Result {
+    if info.is_null() || count_out.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let (info, _count_out) = unsafe { (&*info, &mut *count_out) };
+
+    to_xr_result(with_session!(xr_session, |_session| {
+        log::debug!("enumerate_bound_sources {info:?}");
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        Ok(())
+    }))
+}
+
+pub extern "system" fn get_input_source_localized_name(
+    xr_session: xr::Session,
+    info: *const xr::InputSourceLocalizedNameGetInfo,
+    _capacity_in: u32,
+    count_out: *mut u32,
+    _buf: *mut c_char,
+) -> xr::Result {
+    if info.is_null() || count_out.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let (info, _count_out) = unsafe { (&*info, &mut *count_out) };
+
+    to_xr_result(with_session!(xr_session, |_session| {
+        log::debug!("get_input_source_localized_name {info:?}");
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        Ok(())
     }))
 }
 

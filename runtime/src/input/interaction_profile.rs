@@ -1,8 +1,8 @@
 use openxr_sys as xr;
 
-use crate::{error::to_xr_result, instance::obj::ActionBinding, with_instance};
+use crate::{error::to_xr_result, instance::obj::ActionBinding, with_instance, with_session};
 
-pub extern "system" fn suggest_interaction_profile(
+pub extern "system" fn suggest(
     xr_instance: xr::Instance,
     suggestion: *const xr::InteractionProfileSuggestedBinding,
 ) -> xr::Result {
@@ -31,5 +31,23 @@ pub extern "system" fn suggest_interaction_profile(
 
         instance
             .set_interaction_profile_bindings(suggestion.interaction_profile.into_raw(), bindings)
+    }))
+}
+
+pub extern "system" fn get_current(
+    xr_session: xr::Session,
+    top_level_user_path: xr::Path,
+    interaction_profile: *mut xr::InteractionProfileState,
+) -> xr::Result {
+    if interaction_profile.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let _interaction_profile = unsafe { &mut *interaction_profile };
+
+    to_xr_result(with_session!(xr_session, |_session| {
+        log::debug!("get_current {top_level_user_path:?}");
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        Ok(())
     }))
 }

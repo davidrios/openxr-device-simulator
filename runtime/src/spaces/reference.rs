@@ -61,6 +61,27 @@ pub extern "system" fn create(
     }))
 }
 
+pub extern "system" fn get_bounds_rect(
+    xr_session: xr::Session,
+    ref_space_type: xr::ReferenceSpaceType,
+    bounds: *mut xr::Extent2Df,
+) -> xr::Result {
+    if bounds.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let bounds = unsafe { &mut *bounds };
+
+    log::debug!("get_bounds_rect {ref_space_type:?}");
+
+    to_xr_result(with_session!(xr_session, |_session| {
+        bounds.width = 0.0;
+        bounds.height = 0.0;
+        return xr::Result::SPACE_BOUNDS_UNAVAILABLE.into();
+        Ok(())
+    }))
+}
+
 #[derive(Debug)]
 pub struct SimulatedReferenceSpace {
     pose: xr::Posef,

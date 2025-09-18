@@ -54,6 +54,7 @@ pub extern "system" fn path_to_string(
         }
 
         copy_str_to_cchar_ptr::<{ xr::MAX_PATH_LENGTH }>(path, buf);
+        log::debug!("path_to_string {xr_path:?}->{path}");
 
         Ok(())
     }))

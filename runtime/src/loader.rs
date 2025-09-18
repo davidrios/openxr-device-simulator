@@ -155,10 +155,15 @@ extern "system" fn xr_get_instance_proc_addr(
                     xr::pfn::CreateReferenceSpace,
                     spaces::reference::create
                 )),
+                "xrGetReferenceSpaceBoundsRect" => Some(bind_api_fn!(
+                    xr::pfn::GetReferenceSpaceBoundsRect,
+                    spaces::reference::get_bounds_rect
+                )),
                 "xrCreateActionSpace" => Some(bind_api_fn!(
                     xr::pfn::CreateActionSpace,
                     spaces::action::create
                 )),
+                "xrLocateSpace" => Some(bind_api_fn!(xr::pfn::LocateSpace, spaces::locate)),
                 "xrDestroySpace" => Some(bind_api_fn!(xr::pfn::DestroySpace, spaces::destroy)),
 
                 "xrCreateActionSet" => Some(bind_api_fn!(
@@ -173,10 +178,45 @@ extern "system" fn xr_get_instance_proc_addr(
                 "xrCreateAction" => {
                     Some(bind_api_fn!(xr::pfn::CreateAction, input::action::create))
                 }
+                "xrDestroyAction" => {
+                    Some(bind_api_fn!(xr::pfn::DestroyAction, input::action::destroy))
+                }
+                "xrEnumerateBoundSourcesForAction" => Some(bind_api_fn!(
+                    xr::pfn::EnumerateBoundSourcesForAction,
+                    input::action::enumerate_bound_sources
+                )),
+                "xrGetInputSourceLocalizedName" => Some(bind_api_fn!(
+                    xr::pfn::GetInputSourceLocalizedName,
+                    input::action::get_input_source_localized_name
+                )),
+                "xrGetActionStateBoolean" => Some(bind_api_fn!(
+                    xr::pfn::GetActionStateBoolean,
+                    input::action_state::get_boolean
+                )),
+                "xrGetActionStateFloat" => Some(bind_api_fn!(
+                    xr::pfn::GetActionStateFloat,
+                    input::action_state::get_float
+                )),
+                "xrGetActionStateVector2f" => Some(bind_api_fn!(
+                    xr::pfn::GetActionStateVector2f,
+                    input::action_state::get_vector2f
+                )),
+                "xrGetActionStatePose" => Some(bind_api_fn!(
+                    xr::pfn::GetActionStatePose,
+                    input::action_state::get_pose
+                )),
+                "xrSyncActions" => Some(bind_api_fn!(
+                    xr::pfn::SyncActions,
+                    input::action_state::sync_actions
+                )),
 
                 "xrSuggestInteractionProfileBindings" => Some(bind_api_fn!(
                     xr::pfn::SuggestInteractionProfileBindings,
-                    input::binding::suggest_interaction_profile
+                    input::interaction_profile::suggest
+                )),
+                "xrGetCurrentInteractionProfile" => Some(bind_api_fn!(
+                    xr::pfn::GetCurrentInteractionProfile,
+                    input::interaction_profile::get_current
                 )),
 
                 "xrWaitFrame" => Some(bind_api_fn!(xr::pfn::WaitFrame, rendering::frame::wait)),
@@ -187,6 +227,7 @@ extern "system" fn xr_get_instance_proc_addr(
                     xr::pfn::EnumerateEnvironmentBlendModes,
                     rendering::enumerate_blend_modes
                 )),
+
                 "xrEnumerateSwapchainFormats" => Some(bind_api_fn!(
                     xr::pfn::EnumerateSwapchainFormats,
                     rendering::swapchain::enumerate_formats
@@ -195,9 +236,30 @@ extern "system" fn xr_get_instance_proc_addr(
                     xr::pfn::CreateSwapchain,
                     rendering::swapchain::create
                 )),
+                "xrDestroySwapchain" => Some(bind_api_fn!(
+                    xr::pfn::DestroySwapchain,
+                    rendering::swapchain::destroy
+                )),
                 "xrEnumerateSwapchainImages" => Some(bind_api_fn!(
                     xr::pfn::EnumerateSwapchainImages,
                     rendering::swapchain::enumerate_images
+                )),
+                "xrAcquireSwapchainImage" => Some(bind_api_fn!(
+                    xr::pfn::AcquireSwapchainImage,
+                    rendering::swapchain::acquire_image
+                )),
+                "xrWaitSwapchainImage" => Some(bind_api_fn!(
+                    xr::pfn::WaitSwapchainImage,
+                    rendering::swapchain::wait_image
+                )),
+                "xrReleaseSwapchainImage" => Some(bind_api_fn!(
+                    xr::pfn::ReleaseSwapchainImage,
+                    rendering::swapchain::release_image
+                )),
+
+                "xrLocateViews" => Some(bind_api_fn!(
+                    xr::pfn::LocateViews,
+                    rendering::view::locate_views
                 )),
 
                 "xrPollEvent" => Some(bind_api_fn!(xr::pfn::PollEvent, event::poll)),

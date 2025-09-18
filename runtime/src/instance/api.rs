@@ -181,6 +181,7 @@ pub extern "system" fn result_to_string(
             format!("XR_UNKNOWN_FAILURE_{result_int}")
         };
         copy_str_to_cchar_ptr::<{ xr::MAX_RESULT_STRING_SIZE }>(&res, buf);
+        log::debug!("result_to_string {xr_result}->{res}");
         Ok(())
     }))
 }
@@ -196,10 +197,9 @@ pub extern "system" fn structure_type_to_string(
 
     to_xr_result(with_instance!(xr_instance, |_instance| {
         let result_int = structure_type.into_raw();
-        copy_str_to_cchar_ptr::<{ xr::MAX_RESULT_STRING_SIZE }>(
-            &format!("XR_UNKNOWN_STRUCTURE_TYPE_{result_int}"),
-            buf,
-        );
+        let res = format!("XR_UNKNOWN_STRUCTURE_TYPE_{result_int}");
+        copy_str_to_cchar_ptr::<{ xr::MAX_RESULT_STRING_SIZE }>(&res, buf);
+        log::debug!("structure_type_to_string {structure_type:?}->{res}");
         Ok(())
     }))
 }

@@ -33,6 +33,20 @@ pub fn create(session: &mut SimulatedSession, space: SimulatedSpaceType) -> Resu
     Ok(next_id)
 }
 
+pub extern "system" fn locate(
+    xr_space: xr::Space,
+    xr_base_space: xr::Space,
+    xr_time: xr::Time,
+    xr_location: *mut xr::SpaceLocation,
+) -> xr::Result {
+    if xr_location.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    log::debug!("locate: {xr_space:?}, {xr_base_space:?}, {xr_time:?}");
+    xr::Result::ERROR_FUNCTION_UNSUPPORTED
+}
+
 pub extern "system" fn destroy(xr_obj: xr::Space) -> xr::Result {
     if xr_obj == xr::Space::NULL {
         return xr::Result::ERROR_HANDLE_INVALID;

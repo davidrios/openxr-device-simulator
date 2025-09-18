@@ -145,6 +145,62 @@ pub extern "system" fn enumerate_images(
     }))
 }
 
+pub extern "system" fn acquire_image(
+    xr_swapchain: xr::Swapchain,
+    info: *const xr::SwapchainImageAcquireInfo,
+    index: *mut u32,
+) -> xr::Result {
+    let (info, _index) = unsafe { (&*info, &mut *index) };
+    to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
+        log::debug!("[{xr_swapchain:?}] acquire_image {info:?}");
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED.into();
+        Ok(())
+    }))
+}
+
+pub extern "system" fn wait_image(
+    xr_swapchain: xr::Swapchain,
+    info: *const xr::SwapchainImageWaitInfo,
+) -> xr::Result {
+    if info.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let info = unsafe { &*info };
+    to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
+        log::debug!("[{xr_swapchain:?}] wait_image {info:?}");
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED.into();
+        Ok(())
+    }))
+}
+
+pub extern "system" fn release_image(
+    xr_swapchain: xr::Swapchain,
+    info: *const xr::SwapchainImageReleaseInfo,
+) -> xr::Result {
+    if info.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let info = unsafe { &*info };
+    to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
+        log::debug!("[{xr_swapchain:?}] release_image {info:?}");
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED.into();
+        Ok(())
+    }))
+}
+
+pub extern "system" fn destroy(xr_obj: xr::Swapchain) -> xr::Result {
+    if xr_obj == xr::Swapchain::NULL {
+        return xr::Result::ERROR_HANDLE_INVALID;
+    }
+
+    let instance_id = xr_obj.into_raw();
+
+    log::debug!("destroyed swapchain {instance_id} (todo)");
+    xr::Result::SUCCESS
+}
+
 #[derive(Debug)]
 pub struct SimulatedSwapchain {
     session_id: u64,

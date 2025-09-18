@@ -4,6 +4,7 @@ use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, with_instance};
 
 pub mod frame;
 pub mod swapchain;
+pub mod view;
 
 pub extern "system" fn enumerate_blend_modes(
     xr_instance: xr::Instance,

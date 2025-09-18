@@ -10,7 +10,7 @@ use openxr_sys as xr;
 use crate::{
     error::{Error, Result, to_xr_result},
     event::create_queue,
-    utils::copy_cstr_to_i8,
+    utils::{copy_str_to_cchar_arr, copy_str_to_cchar_ptr, copy_u8slice_to_cchar_arr},
 };
 
 #[macro_export]
@@ -68,7 +68,7 @@ pub extern "system" fn enumerate_extension_properties(
 
     for (idx, ext) in SUPPORTED_EXTS.iter().enumerate() {
         let prop = unsafe { &mut *properties.add(idx) };
-        copy_cstr_to_i8(ext.0, &mut prop.extension_name);
+        copy_u8slice_to_cchar_arr(ext.0, &mut prop.extension_name);
         prop.extension_version = ext.1;
     }
 
@@ -162,4 +162,44 @@ pub extern "system" fn get_properties(
     }
 
     to_xr_result(with_instance!(xr_instance, |instance| instance.get_properties(properties)))
+}
+
+pub extern "system" fn result_to_string(
+    xr_instance: xr::Instance,
+    xr_result: xr::Result,
+    buf: *mut c_char,
+) -> xr::Result {
+    if buf.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    to_xr_result(with_instance!(xr_instance, |_instance| {
+        let result_int = xr_result.into_raw();
+        let res = if result_int >= 0 {
+            format!("XR_UNKNOWN_SUCCESS_{result_int}")
+        } else {
+            format!("XR_UNKNOWN_FAILURE_{result_int}")
+        };
+        copy_str_to_cchar_ptr::<{ xr::MAX_RESULT_STRING_SIZE }>(&res, buf);
+        Ok(())
+    }))
+}
+
+pub extern "system" fn structure_type_to_string(
+    xr_instance: xr::Instance,
+    structure_type: xr::StructureType,
+    buf: *mut c_char,
+) -> xr::Result {
+    if buf.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    to_xr_result(with_instance!(xr_instance, |_instance| {
+        let result_int = structure_type.into_raw();
+        copy_str_to_cchar_ptr::<{ xr::MAX_RESULT_STRING_SIZE }>(
+            &format!("XR_UNKNOWN_STRUCTURE_TYPE_{result_int}"),
+            buf,
+        );
+        Ok(())
+    }))
 }

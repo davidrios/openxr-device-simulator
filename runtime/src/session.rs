@@ -54,7 +54,12 @@ pub extern "system" fn create(
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         session_instances.insert(
             next_id,
-            UnsafeCell::new(SimulatedSession::new(xr_instance.into_raw(), next_id)),
+            UnsafeCell::new(
+                match SimulatedSession::new(xr_instance.into_raw(), next_id) {
+                    Ok(sess) => sess,
+                    Err(err) => return err.into(),
+                },
+            ),
         );
 
         *xr_session = xr::Session::from_raw(next_id);
@@ -164,8 +169,8 @@ pub fn get_simulated_session_cell(instance: xr::Session) -> Result<*mut Simulate
 }
 
 impl SimulatedSession {
-    pub fn new(instance_id: u64, id: u64) -> Self {
-        Self {
+    pub fn new(instance_id: u64, id: u64) -> Result<Self> {
+        let sess = Self {
             instance_id,
             id,
             space_ids: HashMap::new(),
@@ -173,7 +178,18 @@ impl SimulatedSession {
             swapchain_ids: HashSet::new(),
             state: xr::SessionState::IDLE,
             is_running: false,
-        }
+        };
+
+        schedule_event(
+            instance_id,
+            &Event::SessionStateChanged {
+                session: xr::Session::from_raw(sess.id),
+                state: sess.state,
+                time: START_TIME.elapsed().into(),
+            },
+        )?;
+
+        Ok(sess)
     }
 
     pub fn id(&self) -> u64 {

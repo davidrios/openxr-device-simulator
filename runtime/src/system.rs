@@ -1,6 +1,6 @@
 use openxr_sys as xr;
 
-use crate::{error::to_xr_result, utils::copy_cstr_to_i8, with_instance};
+use crate::{error::to_xr_result, utils::copy_str_to_cchar_arr, with_instance};
 
 pub const HMD_SYSTEM_ID: u64 = 1;
 
@@ -48,10 +48,7 @@ pub extern "system" fn get_properties(
     to_xr_result(with_instance!(xr_instance, |_instance| {
         properties.system_id = system_id;
         properties.vendor_id = 0x079c98d4;
-        copy_cstr_to_i8(
-            "openxr-device-simulator".as_bytes(),
-            &mut properties.system_name,
-        );
+        copy_str_to_cchar_arr("openxr-device-simulator", &mut properties.system_name);
         properties.graphics_properties = xr::SystemGraphicsProperties {
             max_swapchain_image_height: 1024,
             max_swapchain_image_width: 1024,

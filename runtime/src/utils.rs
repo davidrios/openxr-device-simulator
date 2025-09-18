@@ -1,5 +1,5 @@
 use openxr_sys as xr;
-use std::{ptr, time::Duration};
+use std::{ffi::c_char, ptr, time::Duration};
 
 #[macro_export]
 macro_rules! bind_api_fn {
@@ -9,12 +9,26 @@ macro_rules! bind_api_fn {
     }};
 }
 
-pub fn copy_cstr_to_i8<const MAX: usize>(src: &[u8], dst: &mut [i8; MAX]) {
-    if src.len() >= MAX {
+pub fn copy_u8slice_to_cchar_arr<const MAX: usize>(src: &[u8], dst: &mut [c_char; MAX]) {
+    if src.len() > MAX {
         panic!("src is too large");
     }
 
-    unsafe { ptr::copy_nonoverlapping(src.as_ptr() as *const i8, dst.as_mut_ptr(), src.len()) };
+    unsafe { ptr::copy_nonoverlapping(src.as_ptr() as *const c_char, dst.as_mut_ptr(), src.len()) };
+}
+
+pub fn copy_str_to_cchar_arr<const MAX: usize>(src: &str, dst: &mut [c_char; MAX]) {
+    copy_str_to_cchar_ptr::<MAX>(src, dst as *mut c_char);
+}
+
+pub fn copy_str_to_cchar_ptr<const MAX: usize>(src: &str, dst: *mut c_char) {
+    if src.len() + 1 > MAX {
+        panic!("src is too large");
+    }
+    copy_u8slice_to_cchar_arr(src.as_bytes(), unsafe { &mut *(dst as *mut [c_char; MAX]) });
+    unsafe {
+        *dst.add(src.len()) = 0;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

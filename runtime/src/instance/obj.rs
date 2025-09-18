@@ -6,7 +6,7 @@ use std::{
 
 use openxr_sys as xr;
 
-use crate::{error::Result, utils::copy_cstr_to_i8};
+use crate::{error::Result, utils::copy_str_to_cchar_arr};
 
 static COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
 
@@ -58,10 +58,7 @@ impl SimulatedInstance {
 
     pub fn get_properties(&mut self, properties: &mut xr::InstanceProperties) -> Result<()> {
         properties.runtime_version = xr::Version::new(0, 0, 1);
-        copy_cstr_to_i8(
-            "openxr-device-simulator".as_bytes(),
-            &mut properties.runtime_name,
-        );
+        copy_str_to_cchar_arr("openxr-device-simulator", &mut properties.runtime_name);
         log::debug!("[{}]: get_properties: {:?}", self.id, properties);
 
         Ok(())
@@ -77,6 +74,14 @@ impl SimulatedInstance {
             new_id
         );
         Ok(new_id)
+    }
+
+    pub fn get_path_string(&mut self, xr_path: xr::Path) -> Result<&String> {
+        if let Some(path) = self.paths.get(&xr_path.into_raw()) {
+            Ok(path)
+        } else {
+            Err(xr::Result::ERROR_PATH_INVALID.into())
+        }
     }
 
     pub fn set_session(&mut self, session_id: u64) -> Result<()> {

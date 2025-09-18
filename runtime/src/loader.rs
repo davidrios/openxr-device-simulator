@@ -88,7 +88,16 @@ extern "system" fn xr_get_instance_proc_addr(
                     xr::pfn::GetInstanceProperties,
                     instance::api::get_properties
                 )),
+                "xrResultToString" => Some(bind_api_fn!(
+                    xr::pfn::ResultToString,
+                    instance::api::result_to_string
+                )),
+                "xrStructureTypeToString" => Some(bind_api_fn!(
+                    xr::pfn::StructureTypeToString,
+                    instance::api::structure_type_to_string
+                )),
                 "xrStringToPath" => Some(bind_api_fn!(xr::pfn::StringToPath, path::string_to_path)),
+                "xrPathToString" => Some(bind_api_fn!(xr::pfn::PathToString, path::path_to_string)),
 
                 "xrGetSystem" => Some(bind_api_fn!(xr::pfn::GetSystem, system::get_system)),
                 "xrGetSystemProperties" => Some(bind_api_fn!(

@@ -7,8 +7,9 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    error::Result,
+    error::{Result, to_xr_result},
     session::{SimulatedSession, SimulatedSessionSpace},
+    with_session,
 };
 
 pub mod action;
@@ -31,6 +32,24 @@ pub fn create(session: &mut SimulatedSession, space: SimulatedSpaceType) -> Resu
 
     session.set_space(session_space, next_id)?;
     Ok(next_id)
+}
+
+pub extern "system" fn locate_spaces(
+    xr_session: xr::Session,
+    info: *const xr::SpacesLocateInfo,
+    locations: *mut xr::SpaceLocations,
+) -> xr::Result {
+    if info.is_null() || locations.is_null() {
+        return xr::Result::ERROR_VALIDATION_FAILURE;
+    }
+
+    let (info, _locations) = unsafe { (&*info, &mut *locations) };
+
+    to_xr_result(with_session!(xr_session, |_session| {
+        log::debug!("locate_spaces: {info:?}");
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        Ok(())
+    }))
 }
 
 pub extern "system" fn locate(

@@ -7,7 +7,8 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    bind_api_fn, event, input, instance, path, rendering, session, spaces, system, view, vulkan,
+    bind_api_fn, event, haptics, input, instance, path, rendering, session, spaces, system, view,
+    vulkan,
 };
 
 static LOGGING_INITED: atomic::AtomicBool = atomic::AtomicBool::new(false);
@@ -56,8 +57,6 @@ extern "system" fn xr_get_instance_proc_addr(
     }
 
     let name_str = unsafe { CStr::from_ptr(name).to_str().unwrap_or("") };
-
-    log::debug!("get_instance_proc_addr({:?}), {name_str}", xr_instance);
 
     if xr_instance == xr::Instance::NULL {
         unsafe {
@@ -165,6 +164,9 @@ extern "system" fn xr_get_instance_proc_addr(
                 )),
                 "xrLocateSpace" => Some(bind_api_fn!(xr::pfn::LocateSpace, spaces::locate)),
                 "xrDestroySpace" => Some(bind_api_fn!(xr::pfn::DestroySpace, spaces::destroy)),
+                "xrLocateSpaces" => {
+                    Some(bind_api_fn!(xr::pfn::LocateSpaces, spaces::locate_spaces))
+                }
 
                 "xrCreateActionSet" => Some(bind_api_fn!(
                     xr::pfn::CreateActionSet,
@@ -263,6 +265,15 @@ extern "system" fn xr_get_instance_proc_addr(
                 )),
 
                 "xrPollEvent" => Some(bind_api_fn!(xr::pfn::PollEvent, event::poll)),
+
+                "xrApplyHapticFeedback" => Some(bind_api_fn!(
+                    xr::pfn::ApplyHapticFeedback,
+                    haptics::apply_feedback
+                )),
+                "xrStopHapticFeedback" => Some(bind_api_fn!(
+                    xr::pfn::StopHapticFeedback,
+                    haptics::stop_feedback
+                )),
 
                 _ => None,
             }

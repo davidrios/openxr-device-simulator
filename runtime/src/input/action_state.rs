@@ -2,6 +2,7 @@ use openxr_sys as xr;
 
 use crate::{error::to_xr_result, with_session};
 
+#[allow(unreachable_code)]
 pub extern "system" fn get_boolean(
     xr_session: xr::Session,
     info: *const xr::ActionStateGetInfo,
@@ -20,6 +21,7 @@ pub extern "system" fn get_boolean(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn get_float(
     xr_session: xr::Session,
     info: *const xr::ActionStateGetInfo,
@@ -38,6 +40,7 @@ pub extern "system" fn get_float(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn get_vector2f(
     xr_session: xr::Session,
     info: *const xr::ActionStateGetInfo,
@@ -56,6 +59,7 @@ pub extern "system" fn get_vector2f(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn get_pose(
     xr_session: xr::Session,
     info: *const xr::ActionStateGetInfo,
@@ -74,6 +78,7 @@ pub extern "system" fn get_pose(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn sync_actions(
     xr_session: xr::Session,
     info: *const xr::ActionsSyncInfo,

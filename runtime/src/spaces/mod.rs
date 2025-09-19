@@ -34,6 +34,7 @@ pub fn create(session: &mut SimulatedSession, space: SimulatedSpaceType) -> Resu
     Ok(next_id)
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn locate_spaces(
     xr_session: xr::Session,
     info: *const xr::SpacesLocateInfo,
@@ -77,12 +78,14 @@ pub extern "system" fn destroy(xr_obj: xr::Space) -> xr::Result {
     xr::Result::SUCCESS
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum SimulatedSpaceType {
     Reference(reference::SimulatedReferenceSpace),
     Action(action::SimulatedActionSpace),
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedSpace {
     session_id: u64,

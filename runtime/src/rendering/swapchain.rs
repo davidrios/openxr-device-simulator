@@ -145,6 +145,7 @@ pub extern "system" fn enumerate_images(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn acquire_image(
     xr_swapchain: xr::Swapchain,
     info: *const xr::SwapchainImageAcquireInfo,
@@ -153,11 +154,12 @@ pub extern "system" fn acquire_image(
     let (info, _index) = unsafe { (&*info, &mut *index) };
     to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
         log::debug!("[{xr_swapchain:?}] acquire_image {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED.into();
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
         Ok(())
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn wait_image(
     xr_swapchain: xr::Swapchain,
     info: *const xr::SwapchainImageWaitInfo,
@@ -169,11 +171,12 @@ pub extern "system" fn wait_image(
     let info = unsafe { &*info };
     to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
         log::debug!("[{xr_swapchain:?}] wait_image {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED.into();
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
         Ok(())
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn release_image(
     xr_swapchain: xr::Swapchain,
     info: *const xr::SwapchainImageReleaseInfo,
@@ -185,7 +188,7 @@ pub extern "system" fn release_image(
     let info = unsafe { &*info };
     to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
         log::debug!("[{xr_swapchain:?}] release_image {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED.into();
+        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
         Ok(())
     }))
 }
@@ -201,6 +204,7 @@ pub extern "system" fn destroy(xr_obj: xr::Swapchain) -> xr::Result {
     xr::Result::SUCCESS
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedSwapchain {
     session_id: u64,

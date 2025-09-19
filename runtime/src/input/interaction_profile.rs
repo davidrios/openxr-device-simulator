@@ -34,6 +34,7 @@ pub extern "system" fn suggest(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn get_current(
     xr_session: xr::Session,
     top_level_user_path: xr::Path,

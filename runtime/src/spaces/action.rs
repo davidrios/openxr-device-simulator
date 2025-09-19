@@ -35,6 +35,7 @@ pub extern "system" fn create(
     }))
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedActionSpace {
     action: u64,

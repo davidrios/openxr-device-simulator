@@ -1,5 +1,6 @@
 pub mod error;
 mod event;
+mod haptics;
 mod input;
 mod instance;
 mod loader;

@@ -10,7 +10,7 @@ use openxr_sys as xr;
 use crate::{
     error::{Error, Result, to_xr_result},
     event::create_queue,
-    utils::{copy_str_to_cchar_arr, copy_str_to_cchar_ptr, copy_u8slice_to_cchar_arr},
+    utils::{copy_str_to_cchar_ptr, copy_u8slice_to_cchar_arr},
 };
 
 #[macro_export]

@@ -2,6 +2,7 @@ use openxr_sys as xr;
 
 use crate::{error::to_xr_result, with_session};
 
+#[allow(unreachable_code)]
 pub extern "system" fn apply_feedback(
     xr_session: xr::Session,
     info: *const xr::HapticActionInfo,
@@ -24,6 +25,7 @@ pub extern "system" fn apply_feedback(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn stop_feedback(
     xr_session: xr::Session,
     info: *const xr::HapticActionInfo,

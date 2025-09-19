@@ -8,7 +8,7 @@ use std::{
 use openxr_sys as xr;
 
 use crate::{
-    error::{Error, Result, to_xr_result},
+    error::{Result, to_xr_result},
     utils::create_identity_pose,
     with_action_set, with_session,
 };
@@ -75,6 +75,7 @@ pub extern "system" fn destroy(xr_obj: xr::Action) -> xr::Result {
     xr::Result::SUCCESS
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn enumerate_bound_sources(
     xr_session: xr::Session,
     info: *const xr::BoundSourcesForActionEnumerateInfo,
@@ -95,6 +96,7 @@ pub extern "system" fn enumerate_bound_sources(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn get_input_source_localized_name(
     xr_session: xr::Session,
     info: *const xr::InputSourceLocalizedNameGetInfo,
@@ -115,6 +117,7 @@ pub extern "system" fn get_input_source_localized_name(
     }))
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum SimulatedActionValue {
     Boolean(bool),
@@ -125,6 +128,7 @@ pub enum SimulatedActionValue {
     Unknown(i32),
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedAction {
     action_set_id: u64,
@@ -136,15 +140,6 @@ pub struct SimulatedAction {
 }
 
 static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
-
-#[inline]
-pub fn get_simulated_action_cell(instance: xr::Session) -> Result<*mut SimulatedAction> {
-    Ok(INSTANCES
-        .lock()?
-        .get(&instance.into_raw())
-        .ok_or_else(|| Error::ExpectedSome("action does not exist".into()))?
-        .get())
-}
 
 impl SimulatedAction {
     pub fn new(action_set_id: u64, id: u64, create_info: &xr::ActionCreateInfo) -> Result<Self> {

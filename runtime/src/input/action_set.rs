@@ -74,6 +74,7 @@ pub extern "system" fn destroy(xr_obj: xr::ActionSet) -> xr::Result {
     xr::Result::SUCCESS
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedActionSet {
     instance_id: u64,

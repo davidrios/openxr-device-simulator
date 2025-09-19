@@ -2,6 +2,7 @@ use openxr_sys as xr;
 
 use crate::{error::to_xr_result, with_session};
 
+#[allow(unreachable_code)]
 pub extern "system" fn locate_views(
     xr_session: xr::Session,
     info: *const xr::ViewLocateInfo,

@@ -10,6 +10,7 @@ use crate::{error::Result, utils::copy_str_to_cchar_arr};
 
 static COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum InstanceState {
     Created,
@@ -17,6 +18,7 @@ pub enum InstanceState {
     ActionSetCreated,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ActionBinding {
     action: u64,

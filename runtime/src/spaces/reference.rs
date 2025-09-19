@@ -61,6 +61,7 @@ pub extern "system" fn create(
     }))
 }
 
+#[allow(unreachable_code)]
 pub extern "system" fn get_bounds_rect(
     xr_session: xr::Session,
     ref_space_type: xr::ReferenceSpaceType,
@@ -77,11 +78,12 @@ pub extern "system" fn get_bounds_rect(
     to_xr_result(with_session!(xr_session, |_session| {
         bounds.width = 0.0;
         bounds.height = 0.0;
-        return xr::Result::SPACE_BOUNDS_UNAVAILABLE.into();
+        return xr::Result::SPACE_BOUNDS_UNAVAILABLE;
         Ok(())
     }))
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedReferenceSpace {
     pose: xr::Posef,

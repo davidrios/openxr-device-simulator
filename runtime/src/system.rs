@@ -1,5 +1,3 @@
-use openxr_sys as xr;
-
 use crate::{error::to_xr_result, utils::copy_str_to_cchar_arr, with_instance};
 
 pub const HMD_SYSTEM_ID: u64 = 1;

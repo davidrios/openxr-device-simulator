@@ -1,7 +1,5 @@
 use std::{thread, time::Duration};
 
-use openxr_sys as xr;
-
 use crate::{error::to_xr_result, loader::START_TIME, utils::MyTime, with_session};
 
 pub extern "system" fn wait(

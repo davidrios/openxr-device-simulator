@@ -4,8 +4,6 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use openxr_sys as xr;
-
 use crate::{
     error::{Error, Result, to_xr_result},
     utils::MyTime,

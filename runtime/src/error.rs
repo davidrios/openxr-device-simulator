@@ -1,4 +1,3 @@
-use openxr_sys as xr;
 use std::sync::PoisonError;
 
 #[derive(thiserror::Error, Debug)]

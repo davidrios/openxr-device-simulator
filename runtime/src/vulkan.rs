@@ -1,7 +1,6 @@
 use std::ffi::c_char;
 
 use ash::vk::Handle;
-use openxr_sys as xr;
 
 use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, with_instance};
 

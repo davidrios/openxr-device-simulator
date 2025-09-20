@@ -1,5 +1,3 @@
-use openxr_sys as xr;
-
 use crate::{error::to_xr_result, with_session};
 
 pub extern "system" fn enumerate(

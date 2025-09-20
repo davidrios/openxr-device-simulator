@@ -4,8 +4,6 @@ use std::{
     sync::atomic,
 };
 
-use openxr_sys as xr;
-
 use crate::{error::Result, utils::copy_str_to_cchar_arr};
 
 static COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);

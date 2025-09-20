@@ -4,8 +4,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use openxr_sys as xr;
-
 use crate::{
     bind_api_fn, event, haptics, input, instance, path, rendering, session, spaces, system, view,
     vulkan,

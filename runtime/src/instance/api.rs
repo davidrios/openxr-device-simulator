@@ -5,8 +5,6 @@ use std::{
     sync::{LazyLock, Mutex, atomic},
 };
 
-use openxr_sys as xr;
-
 use crate::{
     error::{Error, Result, to_xr_result},
     event::create_queue,

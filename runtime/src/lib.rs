@@ -12,3 +12,5 @@ mod system;
 mod utils;
 mod view;
 mod vulkan;
+
+extern crate openxr_sys as xr;

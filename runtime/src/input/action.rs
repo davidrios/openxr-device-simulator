@@ -5,8 +5,6 @@ use std::{
     sync::{LazyLock, Mutex, atomic},
 };
 
-use openxr_sys as xr;
-
 use crate::{
     error::{Result, to_xr_result},
     utils::create_identity_pose,

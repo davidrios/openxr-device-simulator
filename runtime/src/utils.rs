@@ -1,4 +1,3 @@
-use openxr_sys as xr;
 use std::{ffi::c_char, ptr, time::Duration};
 
 #[macro_export]

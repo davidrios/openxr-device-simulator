@@ -1,7 +1,5 @@
 use std::ffi::{CStr, c_char};
 
-use openxr_sys as xr;
-
 use crate::{error::to_xr_result, utils::copy_str_to_cchar_ptr, with_instance};
 
 pub extern "system" fn string_to_path(

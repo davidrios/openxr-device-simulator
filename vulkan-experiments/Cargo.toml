@@ -1,5 +1,5 @@
 [package]
-name = "openxr-device-simulator-runtime"
+name = "vulkan-experiments"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -9,12 +9,9 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-openxr-sys = "0.11.0"
-directories.workspace = true
-thiserror.workspace = true
+vulkano.workspace = true
 log.workspace = true
 env_logger.workspace = true
-ash = "0.38.0"
+winit = "0.30.12"
+vulkano-shaders = "0.35.0"
 
-[lib]
-crate-type = ["cdylib"]

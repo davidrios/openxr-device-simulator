@@ -45,8 +45,10 @@ pub extern "system" fn poll(
             event_data.ty = item.ty;
             let dest_slice = &mut event_data.varying[..item.buf.len()];
             dest_slice.copy_from_slice(&item.buf);
+            Ok(xr::Result::SUCCESS)
+        } else {
+            Ok(xr::Result::EVENT_UNAVAILABLE)
         }
-        Ok(())
     }))
 }
 

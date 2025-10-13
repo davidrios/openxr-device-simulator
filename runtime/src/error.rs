@@ -14,6 +14,9 @@ pub enum Error {
     #[error("XrResult error: {0}")]
     XrResult(xr::Result),
 
+    #[error("VkResult error: {0}")]
+    VkResult(ash::vk::Result),
+
     #[error("Utf8Error: {0}")]
     Utf8Error(#[from] std::str::Utf8Error),
 }
@@ -46,11 +49,33 @@ impl From<Error> for xr::Result {
     }
 }
 
+impl From<ash::vk::Result> for Error {
+    fn from(value: ash::vk::Result) -> Self {
+        Self::VkResult(value)
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub fn to_xr_result<T>(value: Result<T>) -> xr::Result {
+pub trait IntoXrSuccess {
+    fn into_xr_success(self) -> xr::Result;
+}
+
+impl IntoXrSuccess for xr::Result {
+    fn into_xr_success(self) -> xr::Result {
+        self
+    }
+}
+
+impl IntoXrSuccess for () {
+    fn into_xr_success(self) -> xr::Result {
+        xr::Result::SUCCESS
+    }
+}
+
+pub fn to_xr_result<T: IntoXrSuccess>(value: Result<T>) -> xr::Result {
     match value {
-        Ok(_) => xr::Result::SUCCESS,
+        Ok(res) => res.into_xr_success(),
         Err(err) => err.into(),
     }
 }

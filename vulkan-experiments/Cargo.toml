@@ -9,9 +9,9 @@ repository.workspace = true
 homepage.workspace = true
 
 [dependencies]
-vulkano.workspace = true
 log.workspace = true
 env_logger.workspace = true
-winit = "0.30.12"
-vulkano-shaders = "0.35.0"
+winit.workspace = true
+vulkano.workspace = true
+vulkano-shaders.workspace = true
 

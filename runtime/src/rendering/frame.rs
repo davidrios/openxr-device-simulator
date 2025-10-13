@@ -7,6 +7,7 @@ pub extern "system" fn wait(
     _wait_info: *const xr::FrameWaitInfo,
     frame_state: *mut xr::FrameState,
 ) -> xr::Result {
+    log::debug!("wait frame");
     if frame_state.is_null() {
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
@@ -18,7 +19,6 @@ pub extern "system" fn wait(
     }
 
     to_xr_result(with_session!(xr_session, |_session| {
-        log::debug!("wait frame");
         // throttle to 1 fps
         thread::sleep(Duration::from_secs(1));
 

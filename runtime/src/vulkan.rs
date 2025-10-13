@@ -1,8 +1,8 @@
 use std::ffi::c_char;
 
-use ash::vk::Handle;
+use ash::vk::{Handle, KHR_SURFACE_NAME, KHR_SWAPCHAIN_NAME, KHR_WAYLAND_SURFACE_NAME, QueueFlags};
 
-use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, with_instance};
+use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, utils::ExtList, with_instance};
 
 pub extern "system" fn get_graphics_requirements(
     xr_instance: xr::Instance,
@@ -58,7 +58,20 @@ pub extern "system" fn get_graphics_device(
             }
         };
 
-        if let Some(dev) = devs.first() {
+        let mut dev = None;
+
+        for p in devs.iter() {
+            let queue_families = vk_instance.get_physical_device_queue_family_properties(*p);
+            for qf in queue_families.iter() {
+                if !qf.queue_flags.contains(QueueFlags::GRAPHICS) {
+                    continue;
+                }
+
+                dev = Some(p);
+            }
+        }
+
+        if let Some(dev) = dev {
             dev.as_raw()
         } else {
             return xr::Result::ERROR_RUNTIME_FAILURE;
@@ -86,16 +99,23 @@ pub extern "system" fn get_instance_extensions(
     let count_out = unsafe { &mut *count_out };
 
     to_xr_result(with_instance!(xr_instance, |_instance| {
+        let exts = ExtList::new(vec![
+            KHR_SURFACE_NAME.to_bytes(),
+            KHR_WAYLAND_SURFACE_NAME.to_bytes(),
+        ]);
+        let size = exts.len();
+
         if capacity_in == 0 {
-            *count_out = 1;
+            *count_out = size as u32;
             return xr::Result::SUCCESS;
         }
 
-        if *count_out != 1 {
+        if *count_out != size as u32 {
             return xr::Result::ERROR_SIZE_INSUFFICIENT;
         }
 
-        unsafe { *buffer = 0 }
+        exts.copy_to_cchar_ptr(buffer);
+
         Ok(())
     }))
 }
@@ -114,16 +134,24 @@ pub extern "system" fn get_device_extensions(
     let count_out = unsafe { &mut *count_out };
 
     to_xr_result(with_instance!(xr_instance, |_instance| {
+        let exts = ExtList::new(vec![KHR_SWAPCHAIN_NAME.to_bytes()]);
+        let size = exts.len();
+
         if capacity_in == 0 {
-            *count_out = 1;
+            *count_out = size as u32;
             return xr::Result::SUCCESS;
         }
 
-        if *count_out != 1 {
+        if *count_out != size as u32 {
             return xr::Result::ERROR_SIZE_INSUFFICIENT;
         }
 
-        unsafe { *buffer = 0 }
+        if buffer.is_null() {
+            return xr::Result::ERROR_VALIDATION_FAILURE;
+        }
+
+        exts.copy_to_cchar_ptr(buffer);
+
         Ok(())
     }))
 }

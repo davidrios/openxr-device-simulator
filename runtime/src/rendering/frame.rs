@@ -19,8 +19,8 @@ pub extern "system" fn wait(
     }
 
     to_xr_result(with_session!(xr_session, |_session| {
-        // throttle to 1 fps
-        thread::sleep(Duration::from_secs(1));
+        // throttle to 2 fps
+        thread::sleep(Duration::from_millis(500));
 
         frame_state.predicted_display_time =
             MyTime::from(START_TIME.elapsed() + Duration::from_millis(1)).into();

@@ -80,7 +80,17 @@ pub extern "system" fn destroy(xr_obj: xr::Session) -> xr::Result {
 
     let instance_id = xr_obj.into_raw();
 
-    log::debug!("destroyed session {instance_id} (todo)");
+    if INSTANCES
+        .lock()
+        .expect("couldn't acquire instances")
+        .remove(&instance_id)
+        .is_some()
+    {
+        log::debug!("destroyed {instance_id}");
+    } else {
+        log::debug!("instance {instance_id} not found");
+    }
+
     xr::Result::SUCCESS
 }
 
@@ -102,10 +112,15 @@ pub extern "system" fn attach_action_sets(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_session!(xr_session, |session| {
-        for i in 0..attach_info.count_action_sets {
-            let item = unsafe { &*attach_info.action_sets.add(i as usize) };
+    let action_sets: &[xr::ActionSet] = unsafe {
+        std::slice::from_raw_parts(
+            attach_info.action_sets,
+            attach_info.count_action_sets as usize,
+        )
+    };
 
+    to_xr_result(with_session!(xr_session, |session| {
+        for item in action_sets {
             if let Err(err) = session.attach_action_set(item.into_raw()) {
                 return err.into();
             }
@@ -150,11 +165,11 @@ pub enum SimulatedSessionSpace {
 }
 
 pub struct GraphicsBinding {
-    pub instance: Arc<ash::Instance>,
-    pub physical_device: ash::vk::PhysicalDevice,
-    pub device: Arc<ash::Device>,
-    pub queue_family_index: u32,
-    pub queue_index: u32,
+    pub(crate) instance: Arc<ash::Instance>,
+    pub(crate) physical_device: ash::vk::PhysicalDevice,
+    pub(crate) device: Arc<ash::Device>,
+    pub(crate) queue_family_index: u32,
+    pub(crate) queue_index: u32,
 }
 
 impl std::fmt::Debug for GraphicsBinding {
@@ -201,14 +216,14 @@ impl TryFrom<&xr::GraphicsBindingVulkanKHR> for GraphicsBinding {
 
 #[derive(Debug)]
 pub struct SimulatedSession {
-    instance_id: u64,
-    id: u64,
-    graphics_binding: GraphicsBinding,
-    space_ids: HashMap<SimulatedSessionSpace, u64>,
-    action_set_ids: HashSet<u64>,
-    swapchain_ids: HashSet<u64>,
-    state: xr::SessionState,
-    is_running: bool,
+    pub(crate) instance_id: u64,
+    pub(crate) id: u64,
+    pub(crate) graphics_binding: GraphicsBinding,
+    pub(crate) space_ids: HashMap<u64, SimulatedSessionSpace>,
+    pub(crate) action_set_ids: HashSet<u64>,
+    pub(crate) swapchain_ids: HashSet<u64>,
+    pub(crate) state: xr::SessionState,
+    pub(crate) is_running: bool,
 }
 
 static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
@@ -258,14 +273,6 @@ impl SimulatedSession {
         Ok(sess)
     }
 
-    pub fn id(&self) -> u64 {
-        self.id
-    }
-
-    pub fn graphics_binding(&self) -> &GraphicsBinding {
-        &self.graphics_binding
-    }
-
     pub fn check_ready(&mut self) -> Result<()> {
         if let xr::SessionState::IDLE = self.state {
             if !self.space_ids.is_empty()
@@ -288,7 +295,7 @@ impl SimulatedSession {
     }
 
     pub fn set_space(&mut self, space_type: SimulatedSessionSpace, space_id: u64) -> Result<()> {
-        self.space_ids.insert(space_type, space_id);
+        self.space_ids.insert(space_id, space_type);
         self.check_ready()?;
 
         Ok(())
@@ -303,6 +310,10 @@ impl SimulatedSession {
 
             Ok(())
         }
+    }
+
+    pub fn has_attached_action_set(&self, action_set_id: u64) -> bool {
+        self.action_set_ids.contains(&action_set_id)
     }
 
     pub fn add_swapchain(&mut self, swapchain_id: u64) -> Result<()> {
@@ -328,6 +339,10 @@ impl SimulatedSession {
         self.is_running = true;
         log::debug!("{}: session began", self.id);
         Ok(())
+    }
+
+    pub fn is_focused(&self) -> bool {
+        matches!(self.state, xr::SessionState::FOCUSED)
     }
 
     pub fn request_exit(&mut self) -> Result<()> {

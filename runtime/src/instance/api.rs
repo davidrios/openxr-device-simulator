@@ -125,7 +125,17 @@ pub extern "system" fn destroy(xr_obj: xr::Instance) -> xr::Result {
 
     let instance_id = xr_obj.into_raw();
 
-    log::debug!("destroyed {instance_id} (todo)");
+    if INSTANCES
+        .lock()
+        .expect("couldn't acquire instances")
+        .remove(&instance_id)
+        .is_some()
+    {
+        log::debug!("destroyed {instance_id}");
+    } else {
+        log::debug!("instance {instance_id} not found");
+    }
+
     xr::Result::SUCCESS
 }
 

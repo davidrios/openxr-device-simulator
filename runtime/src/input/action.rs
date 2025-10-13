@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    error::{Result, to_xr_result},
+    error::{Error, Result, to_xr_result},
     utils::create_identity_pose,
     with_action_set, with_session,
 };
@@ -45,7 +45,7 @@ pub extern "system" fn create(
         action_instances.insert(
             next_id,
             UnsafeCell::new(
-                match SimulatedAction::new(xr_action.into_raw(), next_id, create_info) {
+                match SimulatedAction::new(xr_action_set.into_raw(), next_id, create_info) {
                     Ok(set) => set,
                     Err(err) => return err.into(),
                 },
@@ -69,7 +69,17 @@ pub extern "system" fn destroy(xr_obj: xr::Action) -> xr::Result {
 
     let instance_id = xr_obj.into_raw();
 
-    log::debug!("destroyed action {instance_id} (todo)");
+    if INSTANCES
+        .lock()
+        .expect("couldn't acquire instances")
+        .remove(&instance_id)
+        .is_some()
+    {
+        log::debug!("destroyed {instance_id}");
+    } else {
+        log::debug!("instance {instance_id} not found");
+    }
+
     xr::Result::SUCCESS
 }
 
@@ -126,25 +136,51 @@ pub enum SimulatedActionValue {
     Unknown(i32),
 }
 
+impl Default for SimulatedActionValue {
+    fn default() -> Self {
+        Self::Unknown(0)
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Default)]
+pub struct SimulatedActionCurrentValue {
+    pub(crate) current: SimulatedActionValue,
+    pub(crate) changed_since_last_sync: bool,
+    pub(crate) last_change_time: u64,
+    pub(crate) is_active: bool,
+}
+
+type PathId = u64;
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedAction {
-    action_set_id: u64,
-    id: u64,
-    name: CString,
-    localized_name: String,
-    subaction_paths: Vec<u64>,
-    input_value: SimulatedActionValue,
+    pub(crate) action_set_id: u64,
+    pub(crate) id: u64,
+    pub(crate) name: CString,
+    pub(crate) localized_name: String,
+    pub(crate) subaction_values: HashMap<PathId, SimulatedActionCurrentValue>,
 }
 
 static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
+
+#[inline]
+pub fn get_simulated_action_cell(instance: xr::Action) -> Result<*mut SimulatedAction> {
+    Ok(INSTANCES
+        .lock()?
+        .get(&instance.into_raw())
+        .ok_or_else(|| Error::ExpectedSome("action does not exist".into()))?
+        .get())
+}
 
 impl SimulatedAction {
     pub fn new(action_set_id: u64, id: u64, create_info: &xr::ActionCreateInfo) -> Result<Self> {
         let name = unsafe { CStr::from_ptr(create_info.action_name.as_ptr()) };
         let localized_name = unsafe { CStr::from_ptr(create_info.localized_action_name.as_ptr()) };
 
-        let mut subaction_paths = Vec::new();
+        let mut subaction_values = HashMap::new();
+
         if create_info.count_subaction_paths > 0 {
             if create_info.subaction_paths.is_null() {
                 log::error!("count subaction is > 0 but paths is null");
@@ -152,9 +188,48 @@ impl SimulatedAction {
             }
 
             for i in 0..create_info.count_subaction_paths {
-                subaction_paths
-                    .push(unsafe { *create_info.subaction_paths.add(i as usize) }.into_raw());
+                let path = unsafe { *create_info.subaction_paths.add(i as usize) }.into_raw();
+
+                subaction_values.insert(
+                    path,
+                    SimulatedActionCurrentValue {
+                        current: match create_info.action_type {
+                            xr::ActionType::BOOLEAN_INPUT => SimulatedActionValue::Boolean(false),
+                            xr::ActionType::FLOAT_INPUT => SimulatedActionValue::Float(0.0),
+                            xr::ActionType::VECTOR2F_INPUT => {
+                                SimulatedActionValue::Vector2f(xr::Vector2f::default())
+                            }
+                            xr::ActionType::POSE_INPUT => {
+                                SimulatedActionValue::Pose(create_identity_pose())
+                            }
+                            xr::ActionType::VIBRATION_OUTPUT => {
+                                SimulatedActionValue::Vibration(0.0)
+                            }
+                            _ => SimulatedActionValue::Unknown(create_info.action_type.into_raw()),
+                        },
+                        ..Default::default()
+                    },
+                );
             }
+        } else {
+            subaction_values.insert(
+                0,
+                SimulatedActionCurrentValue {
+                    current: match create_info.action_type {
+                        xr::ActionType::BOOLEAN_INPUT => SimulatedActionValue::Boolean(false),
+                        xr::ActionType::FLOAT_INPUT => SimulatedActionValue::Float(0.0),
+                        xr::ActionType::VECTOR2F_INPUT => {
+                            SimulatedActionValue::Vector2f(xr::Vector2f::default())
+                        }
+                        xr::ActionType::POSE_INPUT => {
+                            SimulatedActionValue::Pose(create_identity_pose())
+                        }
+                        xr::ActionType::VIBRATION_OUTPUT => SimulatedActionValue::Vibration(0.0),
+                        _ => SimulatedActionValue::Unknown(create_info.action_type.into_raw()),
+                    },
+                    ..Default::default()
+                },
+            );
         }
 
         Ok(Self {
@@ -162,18 +237,15 @@ impl SimulatedAction {
             id,
             name: name.into(),
             localized_name: localized_name.to_str()?.into(),
-            subaction_paths,
-            input_value: match create_info.action_type {
-                xr::ActionType::BOOLEAN_INPUT => SimulatedActionValue::Boolean(false),
-                xr::ActionType::FLOAT_INPUT => SimulatedActionValue::Float(0.0),
-                xr::ActionType::VECTOR2F_INPUT => {
-                    SimulatedActionValue::Vector2f(xr::Vector2f::default())
-                }
-                xr::ActionType::POSE_INPUT => SimulatedActionValue::Pose(create_identity_pose()),
-                xr::ActionType::VIBRATION_OUTPUT => SimulatedActionValue::Vibration(0.0),
-                _ => SimulatedActionValue::Unknown(create_info.action_type.into_raw()),
-            },
+            subaction_values,
         })
+    }
+
+    pub fn subaction_value(&self, path: u64) -> Result<&SimulatedActionCurrentValue> {
+        match self.subaction_values.get(&path) {
+            Some(value) => Ok(value),
+            None => Err(xr::Result::ERROR_PATH_INVALID.into()),
+        }
     }
 }
 

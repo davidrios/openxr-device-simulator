@@ -23,7 +23,7 @@ pub fn create(session: &mut SimulatedSession, space: SimulatedSpaceType) -> Resu
 
     spaces.insert(
         next_id,
-        UnsafeCell::new(SimulatedSpace::new(session.id(), next_id, space)?),
+        UnsafeCell::new(SimulatedSpace::new(session.id, next_id, space)?),
     );
 
     log::debug!("create space: {:?}", unsafe { &*spaces[&next_id].get() });
@@ -72,7 +72,17 @@ pub extern "system" fn destroy(xr_obj: xr::Space) -> xr::Result {
 
     let instance_id = xr_obj.into_raw();
 
-    log::debug!("destroyed space {instance_id} (todo)");
+    if INSTANCES
+        .lock()
+        .expect("couldn't acquire instances")
+        .remove(&instance_id)
+        .is_some()
+    {
+        log::debug!("destroyed {instance_id}");
+    } else {
+        log::debug!("instance {instance_id} not found");
+    }
+
     xr::Result::SUCCESS
 }
 

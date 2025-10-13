@@ -32,7 +32,7 @@ pub extern "system" fn path_to_string(
     let count_out = unsafe { &mut *count_out };
 
     to_xr_result(with_instance!(xr_instance, |instance| {
-        let path = match instance.get_path_string(xr_path) {
+        let path = match instance.get_path_string(xr_path.into_raw()) {
             Ok(path) => path,
             Err(err) => return err.into(),
         };

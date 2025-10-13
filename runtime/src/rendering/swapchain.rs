@@ -139,12 +139,9 @@ pub extern "system" fn enumerate_images(
 
         log::debug!("enumerate images");
 
-        let images: &[xr::SwapchainImageVulkanKHR] =
-            unsafe { std::slice::from_raw_parts(images as *const _, swapchain.images.len()) };
-
         #[allow(clippy::needless_range_loop)]
         for i in 0..swapchain.images.len() {
-            let mut item = images[i];
+            let item = unsafe { &mut *(images as *mut xr::SwapchainImageVulkanKHR).add(i) };
             item.image = swapchain.images[i].image.as_raw();
             log::debug!("{item:?}");
         }
@@ -265,14 +262,11 @@ impl SimulatedSwapchain {
 
         let mut images = Vec::with_capacity(num_images);
         for _ in 0..num_images {
-            images.push(OffscreenImage::new(
-                session.graphics_binding(),
-                create_info,
-            )?);
+            images.push(OffscreenImage::new(&session.graphics_binding, create_info)?);
         }
 
         Ok(Self {
-            session_id: session.id(),
+            session_id: session.id,
             id,
             create_flags: create_info.create_flags,
             usage_flags: create_info.usage_flags,
@@ -293,7 +287,7 @@ impl Drop for SimulatedSwapchain {
     fn drop(&mut self) {
         let _res: Result<()> = with_session!(xr::Session::from_raw(self.session_id), |session| {
             for image in self.images.iter() {
-                image.cleanup(session.graphics_binding().device.as_ref());
+                image.cleanup(session.graphics_binding.device.as_ref());
             }
             Ok(())
         });
@@ -360,14 +354,15 @@ const USAGE_FLAGS_MAP: &[(xr::SwapchainUsageFlags, u32)] = &[
     ),
 ];
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct OffscreenImage {
-    pub width: u32,
-    pub height: u32,
-    pub format: ash::vk::Format,
-    pub image: ash::vk::Image,
-    pub image_memory: ash::vk::DeviceMemory,
-    pub image_view: ash::vk::ImageView,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) format: ash::vk::Format,
+    pub(crate) image: ash::vk::Image,
+    pub(crate) image_memory: ash::vk::DeviceMemory,
+    pub(crate) image_view: ash::vk::ImageView,
 }
 
 impl OffscreenImage {

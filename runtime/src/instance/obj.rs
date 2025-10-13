@@ -19,8 +19,8 @@ pub enum InstanceState {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct ActionBinding {
-    action: u64,
-    binding: u64,
+    pub(crate) action: u64,
+    pub(crate) binding: u64,
 }
 
 impl ActionBinding {
@@ -31,12 +31,12 @@ impl ActionBinding {
 
 #[derive(Debug)]
 pub struct SimulatedInstance {
-    id: u64,
-    state: InstanceState,
-    session_id: Option<u64>,
-    action_set_ids: HashSet<u64>,
-    paths: HashMap<u64, String>,
-    interaction_profile_bindings: HashMap<u64, Vec<ActionBinding>>,
+    pub(crate) id: u64,
+    pub(crate) state: InstanceState,
+    pub(crate) session_id: Option<u64>,
+    pub(crate) action_set_ids: HashSet<u64>,
+    pub(crate) paths: HashMap<u64, String>,
+    pub(crate) interaction_profile_bindings: HashMap<u64, Vec<ActionBinding>>,
 }
 
 impl SimulatedInstance {
@@ -76,8 +76,8 @@ impl SimulatedInstance {
         Ok(new_id)
     }
 
-    pub fn get_path_string(&mut self, xr_path: xr::Path) -> Result<&String> {
-        if let Some(path) = self.paths.get(&xr_path.into_raw()) {
+    pub fn get_path_string(&mut self, path_id: u64) -> Result<&String> {
+        if let Some(path) = self.paths.get(&path_id) {
             Ok(path)
         } else {
             Err(xr::Result::ERROR_PATH_INVALID.into())

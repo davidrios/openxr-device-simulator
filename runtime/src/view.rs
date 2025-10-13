@@ -101,8 +101,8 @@ pub extern "system" fn enumerate_configuration_views(
                     max_image_rect_width: 1024,
                     recommended_image_rect_height: 1024,
                     max_image_rect_height: 1024,
-                    recommended_swapchain_sample_count: 3,
-                    max_swapchain_sample_count: 3,
+                    recommended_swapchain_sample_count: 1,
+                    max_swapchain_sample_count: 1,
                 };
             }
         };

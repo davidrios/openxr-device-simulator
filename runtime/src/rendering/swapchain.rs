@@ -4,8 +4,11 @@ use std::{
     sync::{LazyLock, Mutex, atomic},
 };
 
+use ash::vk::Handle;
+
 use crate::{
     error::{Error, Result, to_xr_result},
+    session::{GraphicsBinding, SimulatedSession},
     with_session,
 };
 
@@ -42,6 +45,8 @@ pub extern "system" fn enumerate_formats(
     formats: *mut i64,
 ) -> xr::Result {
     let count_out = unsafe { &mut *count_out };
+
+    log::debug!("enumerate formats: {:?}", capacity_in);
 
     to_xr_result(with_session!(xr_session, |_session| {
         if capacity_in == 0 {
@@ -88,7 +93,7 @@ pub extern "system" fn create(
         swapchain_instances.insert(
             next_id,
             UnsafeCell::new(
-                match SimulatedSwapchain::new(xr_session.into_raw(), next_id, create_info) {
+                match SimulatedSwapchain::new(session, next_id, create_info) {
                     Ok(set) => set,
                     Err(err) => return err.into(),
                 },
@@ -115,11 +120,11 @@ pub extern "system" fn enumerate_images(
 
     to_xr_result(with_swapchain!(xr_swapchain, |swapchain| {
         if capacity_in == 0 {
-            *count_out = swapchain.array_size;
+            *count_out = swapchain.images.len() as u32;
             return xr::Result::SUCCESS;
         }
 
-        if *count_out != swapchain.array_size {
+        if *count_out != swapchain.images.len() as u32 {
             return xr::Result::ERROR_SIZE_INSUFFICIENT;
         }
 
@@ -134,8 +139,13 @@ pub extern "system" fn enumerate_images(
 
         log::debug!("enumerate images");
 
-        for i in 0..(*count_out as usize) {
-            let item = unsafe { &*(images.add(i) as *mut xr::SwapchainImageVulkanKHR) };
+        let images: &[xr::SwapchainImageVulkanKHR] =
+            unsafe { std::slice::from_raw_parts(images as *const _, swapchain.images.len()) };
+
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..swapchain.images.len() {
+            let mut item = images[i];
+            item.image = swapchain.images[i].image.as_raw();
             log::debug!("{item:?}");
         }
 
@@ -198,7 +208,17 @@ pub extern "system" fn destroy(xr_obj: xr::Swapchain) -> xr::Result {
 
     let instance_id = xr_obj.into_raw();
 
-    log::debug!("destroyed swapchain {instance_id} (todo)");
+    if INSTANCES
+        .lock()
+        .expect("couldn't acquire instances")
+        .remove(&instance_id)
+        .is_some()
+    {
+        log::debug!("destroyed {instance_id}");
+    } else {
+        log::debug!("instance {instance_id} not found");
+    }
+
     xr::Result::SUCCESS
 }
 
@@ -216,20 +236,43 @@ pub struct SimulatedSwapchain {
     face_count: u32,
     array_size: u32,
     mip_count: u32,
+    images: Vec<OffscreenImage>,
+    current_image: u32,
 }
 
 static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
 
 impl SimulatedSwapchain {
-    pub fn new(session_id: u64, id: u64, create_info: &xr::SwapchainCreateInfo) -> Result<Self> {
+    pub fn new(
+        session: &SimulatedSession,
+        id: u64,
+        create_info: &xr::SwapchainCreateInfo,
+    ) -> Result<Self> {
         if !SUPPORTED_SWAPCHAIN_FORMATS.contains(&create_info.format) {
             return Err(xr::Result::ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED.into());
         }
 
         let format = ash::vk::Format::from_raw(create_info.format as i32);
 
+        let num_images = if create_info
+            .create_flags
+            .contains(xr::SwapchainCreateFlags::STATIC_IMAGE)
+        {
+            1
+        } else {
+            3
+        };
+
+        let mut images = Vec::with_capacity(num_images);
+        for _ in 0..num_images {
+            images.push(OffscreenImage::new(
+                session.graphics_binding(),
+                create_info,
+            )?);
+        }
+
         Ok(Self {
-            session_id,
+            session_id: session.id(),
             id,
             create_flags: create_info.create_flags,
             usage_flags: create_info.usage_flags,
@@ -240,7 +283,20 @@ impl SimulatedSwapchain {
             face_count: create_info.face_count,
             array_size: create_info.array_size,
             mip_count: create_info.mip_count,
+            images,
+            current_image: 0,
         })
+    }
+}
+
+impl Drop for SimulatedSwapchain {
+    fn drop(&mut self) {
+        let _res: Result<()> = with_session!(xr::Session::from_raw(self.session_id), |session| {
+            for image in self.images.iter() {
+                image.cleanup(session.graphics_binding().device.as_ref());
+            }
+            Ok(())
+        });
     }
 }
 
@@ -256,4 +312,170 @@ pub fn get_simulated_swapchain_cell(instance: xr::Swapchain) -> Result<*mut Simu
         .get(&instance.into_raw())
         .ok_or_else(|| Error::ExpectedSome("swapchain does not exist".into()))?
         .get())
+}
+
+pub fn find_memory_type_index(
+    memory_req: &ash::vk::MemoryRequirements,
+    memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
+    flags: ash::vk::MemoryPropertyFlags,
+) -> Option<u32> {
+    memory_properties.memory_types[..memory_properties.memory_type_count as _]
+        .iter()
+        .enumerate()
+        .find(|(index, memory_type)| {
+            (1 << index) & memory_req.memory_type_bits != 0
+                && memory_type.property_flags.contains(flags)
+        })
+        .map(|(index, _memory_type)| index as u32)
+}
+
+const USAGE_FLAGS_MAP: &[(xr::SwapchainUsageFlags, u32)] = &[
+    (
+        xr::SwapchainUsageFlags::COLOR_ATTACHMENT,
+        ash::vk::ImageUsageFlags::COLOR_ATTACHMENT.as_raw(),
+    ),
+    (
+        xr::SwapchainUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT.as_raw(),
+    ),
+    (
+        xr::SwapchainUsageFlags::UNORDERED_ACCESS,
+        ash::vk::ImageUsageFlags::STORAGE.as_raw(),
+    ),
+    (
+        xr::SwapchainUsageFlags::TRANSFER_SRC,
+        ash::vk::ImageUsageFlags::TRANSFER_SRC.as_raw(),
+    ),
+    (
+        xr::SwapchainUsageFlags::TRANSFER_DST,
+        ash::vk::ImageUsageFlags::TRANSFER_DST.as_raw(),
+    ),
+    (
+        xr::SwapchainUsageFlags::SAMPLED,
+        ash::vk::ImageUsageFlags::SAMPLED.as_raw(),
+    ),
+    (
+        xr::SwapchainUsageFlags::INPUT_ATTACHMENT,
+        ash::vk::ImageUsageFlags::INPUT_ATTACHMENT.as_raw(),
+    ),
+];
+
+#[derive(Debug)]
+pub struct OffscreenImage {
+    pub width: u32,
+    pub height: u32,
+    pub format: ash::vk::Format,
+    pub image: ash::vk::Image,
+    pub image_memory: ash::vk::DeviceMemory,
+    pub image_view: ash::vk::ImageView,
+}
+
+impl OffscreenImage {
+    pub fn cleanup(&self, device: &ash::Device) {
+        unsafe {
+            device.destroy_image_view(self.image_view, None);
+            device.free_memory(self.image_memory, None);
+            device.destroy_image(self.image, None);
+        }
+    }
+
+    pub fn new(
+        graphics_binding: &GraphicsBinding,
+        create_info: &xr::SwapchainCreateInfo,
+    ) -> Result<Self> {
+        let format = ash::vk::Format::from_raw(create_info.format as i32);
+
+        let physical_device_memory_properties = unsafe {
+            graphics_binding
+                .instance
+                .get_physical_device_memory_properties(graphics_binding.physical_device)
+        };
+
+        let (color_image, color_image_memory, color_image_view) = {
+            let mut usage = ash::vk::ImageUsageFlags::from_raw(0);
+            for (from, to) in USAGE_FLAGS_MAP {
+                if create_info
+                    .usage_flags
+                    .contains(xr::SwapchainUsageFlags::from_raw(from.into_raw()))
+                {
+                    usage |= ash::vk::ImageUsageFlags::from_raw(*to);
+                }
+            }
+
+            let image_create_info = ash::vk::ImageCreateInfo {
+                image_type: ash::vk::ImageType::TYPE_2D,
+                format,
+                extent: ash::vk::Extent3D {
+                    width: create_info.width,
+                    height: create_info.height,
+                    depth: 1,
+                },
+                mip_levels: create_info.mip_count,
+                array_layers: 1,
+                samples: ash::vk::SampleCountFlags::TYPE_1,
+                usage,
+                ..Default::default()
+            };
+
+            let image = match unsafe {
+                graphics_binding
+                    .device
+                    .create_image(&image_create_info, None)
+            } {
+                Ok(image) => image,
+                Err(err) => return Err(err.into()),
+            };
+
+            let mem_req = unsafe { graphics_binding.device.get_image_memory_requirements(image) };
+            let mem_type_index = find_memory_type_index(
+                &mem_req,
+                &physical_device_memory_properties,
+                ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            )
+            .expect("Failed to find suitable memory type for color image.");
+
+            let alloc_info = ash::vk::MemoryAllocateInfo {
+                allocation_size: mem_req.size,
+                memory_type_index: mem_type_index,
+                ..Default::default()
+            };
+
+            let memory = unsafe { graphics_binding.device.allocate_memory(&alloc_info, None)? };
+            unsafe {
+                graphics_binding
+                    .device
+                    .bind_image_memory(image, memory, 0)?
+            };
+
+            let view_create_info = ash::vk::ImageViewCreateInfo {
+                image,
+                view_type: ash::vk::ImageViewType::TYPE_2D,
+                format,
+                subresource_range: ash::vk::ImageSubresourceRange {
+                    aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                },
+                ..Default::default()
+            };
+
+            let view = unsafe {
+                graphics_binding
+                    .device
+                    .create_image_view(&view_create_info, None)?
+            };
+            (image, memory, view)
+        };
+
+        Ok(Self {
+            width: create_info.width,
+            height: create_info.height,
+            format,
+            image: color_image,
+            image_memory: color_image_memory,
+            image_view: color_image_view,
+        })
+    }
 }

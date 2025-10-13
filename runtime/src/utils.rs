@@ -30,6 +30,45 @@ pub fn copy_str_to_cchar_ptr<const MAX: usize>(src: &str, dst: *mut c_char) {
     }
 }
 
+pub struct ExtList<'a> {
+    exts: Vec<&'a [u8]>,
+}
+
+impl<'a> ExtList<'a> {
+    pub fn new(exts: Vec<&'a [u8]>) -> Self {
+        Self { exts }
+    }
+
+    pub fn len(&self) -> usize {
+        let mut size = 0;
+        for i in 0..self.exts.len() {
+            size += self.exts[i].len() + 1;
+        }
+        size
+    }
+
+    pub fn copy_to_cchar_ptr(&self, buffer: *mut c_char) {
+        unsafe {
+            let mut offset = 0;
+            for i in 0..self.exts.len() {
+                let src = self.exts[i];
+                ptr::copy_nonoverlapping(
+                    src.as_ptr() as *const c_char,
+                    buffer.add(offset),
+                    src.len(),
+                );
+                offset += src.len();
+                *buffer.add(offset) = if i == self.exts.len() - 1 {
+                    0
+                } else {
+                    ' ' as i8
+                };
+                offset += 1;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct MyTime(xr::Time);
 

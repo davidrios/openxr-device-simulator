@@ -1,8 +1,10 @@
 use std::{
     cell::UnsafeCell,
     collections::{HashMap, HashSet},
-    sync::{LazyLock, Mutex, atomic},
+    sync::{Arc, LazyLock, Mutex, atomic},
 };
+
+use ash::vk::Handle;
 
 use crate::{
     error::{Error, Result, to_xr_result},
@@ -47,22 +49,25 @@ pub extern "system" fn create(
         return xr::Result::ERROR_SYSTEM_INVALID;
     }
 
+    log::debug!("create: {:?}", create_info);
+
     to_xr_result(with_instance!(xr_instance, |instance| {
         let mut session_instances = INSTANCES.lock().unwrap();
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         session_instances.insert(
             next_id,
             UnsafeCell::new(
-                match SimulatedSession::new(xr_instance.into_raw(), next_id) {
-                    Ok(sess) => sess,
+                match SimulatedSession::new(xr_instance.into_raw(), next_id, create_info) {
+                    Ok(sess) => {
+                        log::debug!("created: {:?}", &sess);
+                        sess
+                    }
                     Err(err) => return err.into(),
                 },
             ),
         );
 
         *xr_session = xr::Session::from_raw(next_id);
-
-        log::debug!("create: {:?}", create_info);
 
         instance.set_session(next_id)
     }))
@@ -144,10 +149,61 @@ pub enum SimulatedSessionSpace {
     Action,
 }
 
+pub struct GraphicsBinding {
+    pub instance: Arc<ash::Instance>,
+    pub physical_device: ash::vk::PhysicalDevice,
+    pub device: Arc<ash::Device>,
+    pub queue_family_index: u32,
+    pub queue_index: u32,
+}
+
+impl std::fmt::Debug for GraphicsBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GraphicsBinding")
+            .field("instance", &self.instance.handle())
+            .field("physical_device", &self.physical_device)
+            .field("device", &self.device.handle())
+            .field("queue_family_index", &self.queue_family_index)
+            .field("queue_index", &self.queue_index)
+            .finish()
+    }
+}
+
+impl TryFrom<&xr::GraphicsBindingVulkanKHR> for GraphicsBinding {
+    type Error = Error;
+
+    fn try_from(value: &xr::GraphicsBindingVulkanKHR) -> Result<Self> {
+        let entry = match unsafe { ash::Entry::load() } {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!("failed to load Vulkan loader: {}", e);
+                return Err(xr::Result::ERROR_RUNTIME_FAILURE.into());
+            }
+        };
+
+        unsafe {
+            let vk_instance = ash::vk::Instance::from_raw(value.instance as u64);
+            let instance = Arc::new(ash::Instance::load(entry.static_fn(), vk_instance));
+
+            let vk_device = ash::vk::Device::from_raw(value.device as u64);
+            let device = Arc::new(ash::Device::load(instance.fp_v1_0(), vk_device));
+
+            Ok(Self {
+                instance,
+                physical_device: ash::vk::PhysicalDevice::from_raw(value.physical_device as u64),
+                device,
+                queue_family_index: value.queue_family_index,
+                queue_index: value.queue_index,
+            })
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SimulatedSession {
     instance_id: u64,
     id: u64,
+    graphics_binding: GraphicsBinding,
     space_ids: HashMap<SimulatedSessionSpace, u64>,
     action_set_ids: HashSet<u64>,
     swapchain_ids: HashSet<u64>,
@@ -167,10 +223,22 @@ pub fn get_simulated_session_cell(instance: xr::Session) -> Result<*mut Simulate
 }
 
 impl SimulatedSession {
-    pub fn new(instance_id: u64, id: u64) -> Result<Self> {
+    pub fn new(instance_id: u64, id: u64, create_info: &xr::SessionCreateInfo) -> Result<Self> {
+        if create_info.next.is_null() {
+            return Err(xr::Result::ERROR_GRAPHICS_DEVICE_INVALID.into());
+        }
+
+        let graphics_binding =
+            unsafe { &*(create_info.next as *const xr::GraphicsBindingVulkanKHR) };
+
+        if graphics_binding.ty != xr::StructureType::GRAPHICS_BINDING_VULKAN_KHR {
+            return Err(xr::Result::ERROR_GRAPHICS_DEVICE_INVALID.into());
+        }
+
         let sess = Self {
             instance_id,
             id,
+            graphics_binding: graphics_binding.try_into()?,
             space_ids: HashMap::new(),
             action_set_ids: HashSet::new(),
             swapchain_ids: HashSet::new(),
@@ -192,6 +260,10 @@ impl SimulatedSession {
 
     pub fn id(&self) -> u64 {
         self.id
+    }
+
+    pub fn graphics_binding(&self) -> &GraphicsBinding {
+        &self.graphics_binding
     }
 
     pub fn check_ready(&mut self) -> Result<()> {

@@ -14,7 +14,7 @@ directories.workspace = true
 thiserror.workspace = true
 log.workspace = true
 env_logger.workspace = true
-ash = "0.38.0"
+ash.workspace = true
 
 [lib]
 crate-type = ["cdylib"]

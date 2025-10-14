@@ -73,9 +73,15 @@ impl IntoXrSuccess for () {
     }
 }
 
-pub fn to_xr_result<T: IntoXrSuccess>(value: Result<T>) -> xr::Result {
-    match value {
-        Ok(res) => res.into_xr_success(),
-        Err(err) => err.into(),
+pub trait IntoXrResult {
+    fn into_xr_result(self) -> xr::Result;
+}
+
+impl<T: IntoXrSuccess> IntoXrResult for Result<T> {
+    fn into_xr_result(self) -> xr::Result {
+        match self {
+            Ok(res) => res.into_xr_success(),
+            Err(err) => err.into(),
+        }
     }
 }

@@ -7,23 +7,10 @@ use std::{
 use ash::vk::Handle;
 
 use crate::{
-    error::{Error, Result, to_xr_result},
-    session::{GraphicsBinding, SimulatedSession},
-    with_session,
+    error::{IntoXrResult, Result},
+    session::{GraphicsBinding, SimulatedSession, with_session},
+    utils::with_obj_instance,
 };
-
-#[macro_export]
-macro_rules! with_swapchain {
-    ($xr_obj:expr, |$instance:ident| $expr:expr) => {{
-        match $crate::rendering::swapchain::get_simulated_swapchain_cell($xr_obj) {
-            Ok(instance_ptr) => {
-                let $instance = unsafe { &mut *instance_ptr };
-                $expr
-            }
-            Err(err) => Err(err),
-        }
-    }};
-}
 
 const SUPPORTED_SWAPCHAIN_FORMATS: &[i64] = &[
     ash::vk::Format::R8G8B8_UNORM.as_raw() as i64,
@@ -48,18 +35,18 @@ pub extern "system" fn enumerate_formats(
 
     log::debug!("enumerate formats: {:?}", capacity_in);
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         if capacity_in == 0 {
             *count_out = SUPPORTED_SWAPCHAIN_FORMATS.len() as u32;
-            return xr::Result::SUCCESS;
+            return Ok(());
         }
 
         if *count_out != SUPPORTED_SWAPCHAIN_FORMATS.len() as u32 {
-            return xr::Result::ERROR_SIZE_INSUFFICIENT;
+            return Err(xr::Result::ERROR_SIZE_INSUFFICIENT.into());
         }
 
         if formats.is_null() {
-            return xr::Result::ERROR_VALIDATION_FAILURE;
+            return Err(xr::Result::ERROR_VALIDATION_FAILURE.into());
         }
 
         unsafe {
@@ -69,7 +56,8 @@ pub extern "system" fn enumerate_formats(
         }
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn create(
@@ -87,27 +75,23 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_session!(xr_session, |session| {
+    with_session(xr_session.into_raw(), |session| {
         let mut swapchain_instances = INSTANCES.lock().unwrap();
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         swapchain_instances.insert(
             next_id,
-            UnsafeCell::new(
-                match SimulatedSwapchain::new(session, next_id, create_info) {
-                    Ok(set) => set,
-                    Err(err) => return err.into(),
-                },
-            ),
+            UnsafeCell::new(SimulatedSwapchain::new(session, next_id, create_info)?),
         );
 
-        log::debug!("create swapchain: {:?}", unsafe {
+        log::debug!("created: {:?}", unsafe {
             &*swapchain_instances[&next_id].get()
         });
 
         *xr_swapchain = xr::Swapchain::from_raw(next_id);
 
         session.add_swapchain(next_id)
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn enumerate_images(
@@ -118,14 +102,14 @@ pub extern "system" fn enumerate_images(
 ) -> xr::Result {
     let count_out = unsafe { &mut *count_out };
 
-    to_xr_result(with_swapchain!(xr_swapchain, |swapchain| {
+    with_swapchain(xr_swapchain.into_raw(), |swapchain| {
         if capacity_in == 0 {
             *count_out = swapchain.images.len() as u32;
-            return xr::Result::SUCCESS;
+            return Ok(());
         }
 
         if *count_out != swapchain.images.len() as u32 {
-            return xr::Result::ERROR_SIZE_INSUFFICIENT;
+            return Err(xr::Result::ERROR_SIZE_INSUFFICIENT.into());
         }
 
         if images.is_null()
@@ -134,7 +118,7 @@ pub extern "system" fn enumerate_images(
                 xr::StructureType::SWAPCHAIN_IMAGE_VULKAN_KHR
             )
         {
-            return xr::Result::ERROR_VALIDATION_FAILURE;
+            return Err(xr::Result::ERROR_VALIDATION_FAILURE.into());
         }
 
         log::debug!("enumerate images");
@@ -146,7 +130,8 @@ pub extern "system" fn enumerate_images(
         }
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(unreachable_code)]
@@ -156,11 +141,12 @@ pub extern "system" fn acquire_image(
     index: *mut u32,
 ) -> xr::Result {
     let (info, _index) = unsafe { (&*info, &mut *index) };
-    to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
+    with_swapchain(xr_swapchain.into_raw(), |_swapchain| {
         log::debug!("[{xr_swapchain:?}] acquire_image {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(unreachable_code)]
@@ -173,11 +159,12 @@ pub extern "system" fn wait_image(
     }
 
     let info = unsafe { &*info };
-    to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
+    with_swapchain(xr_swapchain.into_raw(), |_swapchain| {
         log::debug!("[{xr_swapchain:?}] wait_image {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(unreachable_code)]
@@ -190,11 +177,12 @@ pub extern "system" fn release_image(
     }
 
     let info = unsafe { &*info };
-    to_xr_result(with_swapchain!(xr_swapchain, |_swapchain| {
+    with_swapchain(xr_swapchain.into_raw(), |_swapchain| {
         log::debug!("[{xr_swapchain:?}] release_image {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn destroy(xr_obj: xr::Swapchain) -> xr::Result {
@@ -235,8 +223,6 @@ pub struct SimulatedSwapchain {
     images: Vec<OffscreenImage>,
     current_image: u32,
 }
-
-static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
 
 impl SimulatedSwapchain {
     pub fn new(
@@ -284,27 +270,14 @@ impl SimulatedSwapchain {
 
 impl Drop for SimulatedSwapchain {
     fn drop(&mut self) {
-        let _res: Result<()> = with_session!(xr::Session::from_raw(self.session_id), |session| {
+        with_session(self.session_id, |session| {
             for image in self.images.iter() {
                 image.cleanup(session.graphics_binding.device.as_ref());
             }
             Ok(())
-        });
+        })
+        .ok();
     }
-}
-
-type SharedSimulatedSwapchain = UnsafeCell<SimulatedSwapchain>;
-
-static INSTANCES: LazyLock<Mutex<HashMap<u64, SharedSimulatedSwapchain>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-#[inline]
-pub fn get_simulated_swapchain_cell(instance: xr::Swapchain) -> Result<*mut SimulatedSwapchain> {
-    Ok(INSTANCES
-        .lock()?
-        .get(&instance.into_raw())
-        .ok_or_else(|| Error::ExpectedSome("swapchain does not exist".into()))?
-        .get())
 }
 
 pub fn find_memory_type_index(
@@ -411,13 +384,10 @@ impl OffscreenImage {
                 ..Default::default()
             };
 
-            let image = match unsafe {
+            let image = unsafe {
                 graphics_binding
                     .device
-                    .create_image(&image_create_info, None)
-            } {
-                Ok(image) => image,
-                Err(err) => return Err(err.into()),
+                    .create_image(&image_create_info, None)?
             };
 
             let mem_req = unsafe { graphics_binding.device.get_image_memory_requirements(image) };
@@ -472,4 +442,18 @@ impl OffscreenImage {
             image_view: color_image_view,
         })
     }
+}
+
+static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
+
+type SharedSimulatedSwapchain = UnsafeCell<SimulatedSwapchain>;
+
+static INSTANCES: LazyLock<Mutex<HashMap<u64, SharedSimulatedSwapchain>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn with_swapchain<T, F>(obj_id: u64, f: F) -> Result<T>
+where
+    F: FnMut(&mut SimulatedSwapchain) -> Result<T>,
+{
+    with_obj_instance(&INSTANCES, obj_id, f)
 }

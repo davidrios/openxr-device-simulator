@@ -1,4 +1,4 @@
-use crate::{error::to_xr_result, with_session};
+use crate::{error::IntoXrResult, session::with_session};
 
 pub extern "system" fn create(
     xr_session: xr::Session,
@@ -15,22 +15,19 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_session!(xr_session, |session| {
-        match super::create(
+    with_session(xr_session.into_raw(), |session| {
+        let space_id = super::create(
             session,
             super::SimulatedSpaceType::Action(SimulatedActionSpace {
                 action: create_info.action.into_raw(),
                 subaction_path: create_info.subaction_path.into_raw(),
                 pose: create_info.pose_in_action_space,
             }),
-        ) {
-            Ok(space_id) => {
-                *xr_space = xr::Space::from_raw(space_id);
-                Ok(())
-            }
-            Err(err) => return err.into(),
-        }
-    }))
+        )?;
+        *xr_space = xr::Space::from_raw(space_id);
+        Ok(())
+    })
+    .into_xr_result()
 }
 
 #[allow(dead_code)]

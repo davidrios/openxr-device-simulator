@@ -6,23 +6,11 @@ use std::{
 };
 
 use crate::{
-    error::{Error, Result, to_xr_result},
-    utils::create_identity_pose,
-    with_action_set, with_session,
+    error::{IntoXrResult, Result},
+    input::action_set::with_action_set,
+    session::with_session,
+    utils::{create_identity_pose, with_obj_instance},
 };
-
-#[macro_export]
-macro_rules! with_action {
-    ($xr_obj:expr, |$instance:ident| $expr:expr) => {{
-        match $crate::input::action::get_simulated_action_cell($xr_obj) {
-            Ok(instance_ptr) => {
-                let $instance = unsafe { &mut *instance_ptr };
-                $expr
-            }
-            Err(err) => Err(err),
-        }
-    }};
-}
 
 pub extern "system" fn create(
     xr_action_set: xr::ActionSet,
@@ -39,27 +27,27 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_action_set!(xr_action_set, |action_set| {
+    with_action_set(xr_action_set.into_raw(), |action_set| {
         let mut action_instances = INSTANCES.lock().unwrap();
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         action_instances.insert(
             next_id,
-            UnsafeCell::new(
-                match SimulatedAction::new(xr_action_set.into_raw(), next_id, create_info) {
-                    Ok(set) => set,
-                    Err(err) => return err.into(),
-                },
-            ),
+            UnsafeCell::new(SimulatedAction::new(
+                xr_action_set.into_raw(),
+                next_id,
+                create_info,
+            )?),
         );
 
-        log::debug!("create action: {:?}", unsafe {
+        log::debug!("created: {:?}", unsafe {
             &*action_instances[&next_id].get()
         });
 
         *xr_action = xr::Action::from_raw(next_id);
 
         action_set.add_action(next_id)
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn destroy(xr_obj: xr::Action) -> xr::Result {
@@ -97,11 +85,12 @@ pub extern "system" fn enumerate_bound_sources(
 
     let (info, _count_out) = unsafe { (&*info, &mut *count_out) };
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         log::debug!("enumerate_bound_sources {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(unreachable_code)]
@@ -118,11 +107,12 @@ pub extern "system" fn get_input_source_localized_name(
 
     let (info, _count_out) = unsafe { (&*info, &mut *count_out) };
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         log::debug!("get_input_source_localized_name {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(dead_code)]
@@ -161,17 +151,6 @@ pub struct SimulatedAction {
     pub(crate) name: CString,
     pub(crate) localized_name: String,
     pub(crate) subaction_values: HashMap<PathId, SimulatedActionCurrentValue>,
-}
-
-static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
-
-#[inline]
-pub fn get_simulated_action_cell(instance: xr::Action) -> Result<*mut SimulatedAction> {
-    Ok(INSTANCES
-        .lock()?
-        .get(&instance.into_raw())
-        .ok_or_else(|| Error::ExpectedSome("action does not exist".into()))?
-        .get())
 }
 
 impl SimulatedAction {
@@ -249,7 +228,16 @@ impl SimulatedAction {
     }
 }
 
+static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
+
 type SharedSimulatedActionSet = UnsafeCell<SimulatedAction>;
 
 static INSTANCES: LazyLock<Mutex<HashMap<u64, SharedSimulatedActionSet>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn with_action<T, F>(xr_obj_id: u64, f: F) -> Result<T>
+where
+    F: FnMut(&mut SimulatedAction) -> Result<T>,
+{
+    with_obj_instance(&INSTANCES, xr_obj_id, f)
+}

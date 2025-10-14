@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use crate::{error::to_xr_result, loader::START_TIME, utils::MyTime, with_session};
+use crate::{error::IntoXrResult, loader::START_TIME, session::with_session, utils::MyTime};
 
 pub extern "system" fn wait(
     xr_session: xr::Session,
@@ -18,7 +18,7 @@ pub extern "system" fn wait(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         // throttle to 2 fps
         thread::sleep(Duration::from_millis(500));
 
@@ -28,7 +28,8 @@ pub extern "system" fn wait(
         frame_state.should_render = xr::TRUE;
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn begin(
@@ -36,7 +37,7 @@ pub extern "system" fn begin(
     _begin_info: *const xr::FrameBeginInfo,
 ) -> xr::Result {
     log::debug!("begin frame");
-    to_xr_result(with_session!(xr_session, |_session| Ok(())))
+    with_session(xr_session.into_raw(), |_session| Ok(())).into_xr_result()
 }
 
 pub extern "system" fn end(
@@ -50,5 +51,5 @@ pub extern "system" fn end(
     let end_info = unsafe { &*end_info };
     log::debug!("end frame info: {:?}", end_info);
 
-    to_xr_result(with_session!(xr_session, |_session| Ok(())))
+    with_session(xr_session.into_raw(), |_session| Ok(())).into_xr_result()
 }

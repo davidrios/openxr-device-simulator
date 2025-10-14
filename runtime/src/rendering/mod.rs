@@ -1,4 +1,4 @@
-use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, with_instance};
+use crate::{error::IntoXrResult, instance::api::with_instance, system::HMD_SYSTEM_ID};
 
 pub mod frame;
 pub mod swapchain;
@@ -24,22 +24,23 @@ pub extern "system" fn enumerate_blend_modes(
 
     let count_out = unsafe { &mut *count_out };
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         if capacity_in == 0 {
             *count_out = 1;
-            return xr::Result::SUCCESS;
+            return Ok(());
         }
 
         if *count_out != 1 {
-            return xr::Result::ERROR_SIZE_INSUFFICIENT;
+            return Err(xr::Result::ERROR_SIZE_INSUFFICIENT.into());
         }
 
         if blend_mode.is_null() {
-            return xr::Result::ERROR_VALIDATION_FAILURE;
+            return Err(xr::Result::ERROR_VALIDATION_FAILURE.into());
         }
 
         unsafe { *blend_mode = xr::EnvironmentBlendMode::OPAQUE }
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }

@@ -11,6 +11,7 @@ use crate::{
     event::{Event, schedule_event},
     instance::api::with_instance,
     loader::START_TIME,
+    rendering::frame::SessionFrame,
     system::HMD_SYSTEM_ID,
     utils::with_obj_instance,
 };
@@ -209,6 +210,7 @@ pub struct SimulatedSession {
     pub(crate) swapchain_ids: HashSet<u64>,
     pub(crate) state: xr::SessionState,
     pub(crate) is_running: bool,
+    pub(crate) frame: SessionFrame,
 }
 
 impl SimulatedSession {
@@ -233,6 +235,7 @@ impl SimulatedSession {
             swapchain_ids: HashSet::new(),
             state: xr::SessionState::IDLE,
             is_running: false,
+            frame: SessionFrame::default(),
         };
 
         schedule_event(
@@ -357,7 +360,21 @@ impl SimulatedSession {
             },
         )?;
 
-        // self.check_ready()?;
+        Ok(())
+    }
+
+    pub fn synchronize(&mut self) -> Result<()> {
+        if matches!(self.state, xr::SessionState::READY) {
+            self.state = xr::SessionState::SYNCHRONIZED;
+            schedule_event(
+                self.instance_id,
+                &Event::SessionStateChanged {
+                    session: xr::Session::from_raw(self.id),
+                    state: self.state,
+                    time: START_TIME.elapsed().into(),
+                },
+            )?;
+        }
 
         Ok(())
     }

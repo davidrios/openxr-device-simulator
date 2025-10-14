@@ -168,7 +168,7 @@ pub extern "system" fn sync_actions(
 
     with_session(xr_session.into_raw(), |session| {
         if !session.is_focused() {
-            return Err(xr::Result::SESSION_NOT_FOCUSED.into());
+            return Ok(xr::Result::SESSION_NOT_FOCUSED);
         }
 
         log::debug!("sync_actions {active_action_sets:?}");
@@ -179,7 +179,7 @@ pub extern "system" fn sync_actions(
             }
         }
 
-        Ok(())
+        Ok(xr::Result::SUCCESS)
     })
     .into_xr_result()
 }

@@ -1,6 +1,6 @@
 use std::{
     cell::UnsafeCell,
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{LazyLock, Mutex, atomic},
 };
 
@@ -140,10 +140,15 @@ pub extern "system" fn acquire_image(
     info: *const xr::SwapchainImageAcquireInfo,
     index: *mut u32,
 ) -> xr::Result {
-    let (info, _index) = unsafe { (&*info, &mut *index) };
-    with_swapchain(xr_swapchain.into_raw(), |_swapchain| {
-        log::debug!("[{xr_swapchain:?}] acquire_image {info:?}");
-        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
+    let (info, index) = unsafe {
+        (
+            if info.is_null() { None } else { Some(&*info) },
+            &mut *index,
+        )
+    };
+
+    with_swapchain(xr_swapchain.into_raw(), |swapchain| {
+        *index = swapchain.acquire_image(info)? as u32;
         Ok(())
     })
     .into_xr_result()
@@ -159,10 +164,9 @@ pub extern "system" fn wait_image(
     }
 
     let info = unsafe { &*info };
-    with_swapchain(xr_swapchain.into_raw(), |_swapchain| {
-        log::debug!("[{xr_swapchain:?}] wait_image {info:?}");
-        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
-        Ok(())
+
+    with_swapchain(xr_swapchain.into_raw(), |swapchain| {
+        swapchain.wait_image(info)
     })
     .into_xr_result()
 }
@@ -172,15 +176,10 @@ pub extern "system" fn release_image(
     xr_swapchain: xr::Swapchain,
     info: *const xr::SwapchainImageReleaseInfo,
 ) -> xr::Result {
-    if info.is_null() {
-        return xr::Result::ERROR_VALIDATION_FAILURE;
-    }
+    let info = unsafe { if info.is_null() { None } else { Some(&*info) } };
 
-    let info = unsafe { &*info };
-    with_swapchain(xr_swapchain.into_raw(), |_swapchain| {
-        log::debug!("[{xr_swapchain:?}] release_image {info:?}");
-        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
-        Ok(())
+    with_swapchain(xr_swapchain.into_raw(), |swapchain| {
+        swapchain.release_image(info)
     })
     .into_xr_result()
 }
@@ -221,7 +220,10 @@ pub struct SimulatedSwapchain {
     array_size: u32,
     mip_count: u32,
     images: Vec<OffscreenImage>,
-    current_image: u32,
+    available_images: VecDeque<usize>,
+    acquired_images: VecDeque<usize>,
+    waited_images: VecDeque<usize>,
+    released_images: VecDeque<usize>,
 }
 
 impl SimulatedSwapchain {
@@ -245,9 +247,11 @@ impl SimulatedSwapchain {
             3
         };
 
+        let mut available_images = VecDeque::with_capacity(num_images);
         let mut images = Vec::with_capacity(num_images);
-        for _ in 0..num_images {
+        for i in 0..num_images {
             images.push(OffscreenImage::new(&session.graphics_binding, create_info)?);
+            available_images.push_back(i);
         }
 
         Ok(Self {
@@ -263,8 +267,49 @@ impl SimulatedSwapchain {
             array_size: create_info.array_size,
             mip_count: create_info.mip_count,
             images,
-            current_image: 0,
+            available_images,
+            acquired_images: VecDeque::with_capacity(num_images),
+            waited_images: VecDeque::with_capacity(num_images),
+            released_images: VecDeque::with_capacity(num_images),
         })
+    }
+
+    pub fn acquire_image(&mut self, info: Option<&xr::SwapchainImageAcquireInfo>) -> Result<usize> {
+        let Some(index) = self.available_images.pop_front() else {
+            return Err(xr::Result::ERROR_CALL_ORDER_INVALID.into());
+        };
+
+        self.acquired_images.push_back(index);
+        log::debug!("[{}] acquire_image ({info:?}) -> {index}", self.id);
+
+        Ok(index)
+    }
+
+    pub fn wait_image(&mut self, info: &xr::SwapchainImageWaitInfo) -> Result<xr::Result> {
+        log::debug!("[{}] wait_image ({info:?})", self.id);
+        if self.acquired_images.front().is_none() {
+            return Err(xr::Result::ERROR_CALL_ORDER_INVALID.into());
+        };
+
+        let index = self.acquired_images.pop_front().unwrap();
+        self.waited_images.push_front(index);
+
+        log::debug!("[{}] wait_image -> {index}", self.id);
+        Ok(xr::Result::SUCCESS)
+    }
+
+    pub fn release_image(
+        &mut self,
+        info: Option<&xr::SwapchainImageReleaseInfo>,
+    ) -> Result<xr::Result> {
+        let Some(index) = self.waited_images.pop_front() else {
+            return Err(xr::Result::ERROR_CALL_ORDER_INVALID.into());
+        };
+
+        self.released_images.push_back(index);
+
+        log::debug!("[{}] release_image ({info:?}) -> {index}", self.id);
+        Ok(xr::Result::SUCCESS)
     }
 }
 

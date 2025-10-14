@@ -7,7 +7,7 @@ use std::{
 use ash::vk::Handle;
 
 use crate::{
-    error::{IntoXrResult, Result},
+    prelude::*,
     session::{GraphicsBinding, SimulatedSession, with_session},
     utils::with_obj_instance,
 };

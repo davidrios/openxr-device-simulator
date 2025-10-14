@@ -4,7 +4,7 @@ use std::{
     sync::atomic,
 };
 
-use crate::{error::Result, utils::copy_str_to_cchar_arr};
+use crate::{prelude::*, utils::copy_str_to_cchar_arr};
 
 static COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
 

@@ -7,10 +7,10 @@ use std::{
 use ash::vk::Handle;
 
 use crate::{
-    error::{Error, IntoXrResult, Result},
     event::{Event, schedule_event},
     instance::api::with_instance,
     loader::START_TIME,
+    prelude::*,
     rendering::frame::SessionFrame,
     system::HMD_SYSTEM_ID,
     utils::with_obj_instance,

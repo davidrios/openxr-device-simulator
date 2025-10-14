@@ -1,7 +1,7 @@
 use crate::{
-    error::{IntoXrResult, Result},
     input::action::{SimulatedActionValue, with_action},
     instance::api::with_instance,
+    prelude::*,
     session::with_session,
 };
 

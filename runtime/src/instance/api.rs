@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
-    error::{Error, IntoXrResult, Result},
     event::create_queue,
+    prelude::*,
     utils::{copy_str_to_cchar_ptr, copy_u8slice_to_cchar_arr, with_obj_instance},
 };
 

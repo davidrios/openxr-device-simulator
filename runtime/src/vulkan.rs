@@ -2,9 +2,7 @@ use std::ffi::c_char;
 
 use ash::vk::{Handle, KHR_SURFACE_NAME, KHR_SWAPCHAIN_NAME, KHR_WAYLAND_SURFACE_NAME, QueueFlags};
 
-use crate::{
-    error::IntoXrResult, instance::api::with_instance, system::HMD_SYSTEM_ID, utils::ExtList,
-};
+use crate::{instance::api::with_instance, prelude::*, system::HMD_SYSTEM_ID, utils::ExtList};
 
 pub extern "system" fn get_graphics_requirements(
     xr_instance: xr::Instance,

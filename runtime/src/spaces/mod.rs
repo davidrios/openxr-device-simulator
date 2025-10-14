@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    error::{Error, IntoXrResult, Result},
+    prelude::*,
     session::{SimulatedSession, SimulatedSessionSpace, with_session},
 };
 

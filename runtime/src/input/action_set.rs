@@ -5,11 +5,7 @@ use std::{
     sync::{LazyLock, Mutex, atomic},
 };
 
-use crate::{
-    error::{IntoXrResult, Result},
-    instance::api::with_instance,
-    utils::with_obj_instance,
-};
+use crate::{instance::api::with_instance, prelude::*, utils::with_obj_instance};
 
 pub extern "system" fn create(
     xr_instance: xr::Instance,

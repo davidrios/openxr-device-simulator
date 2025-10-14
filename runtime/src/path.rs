@@ -1,6 +1,6 @@
 use std::ffi::{CStr, c_char};
 
-use crate::{error::IntoXrResult, instance::api::with_instance, utils::copy_str_to_cchar_ptr};
+use crate::{instance::api::with_instance, prelude::*, utils::copy_str_to_cchar_ptr};
 
 pub extern "system" fn string_to_path(
     xr_instance: xr::Instance,

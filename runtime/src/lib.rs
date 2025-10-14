@@ -13,4 +13,8 @@ mod utils;
 mod view;
 mod vulkan;
 
+pub mod prelude {
+    pub use crate::error::*;
+}
+
 extern crate openxr_sys as xr;

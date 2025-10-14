@@ -1,6 +1,6 @@
 use crate::{
-    error::IntoXrResult,
     instance::{api::with_instance, obj::ActionBinding},
+    prelude::*,
     session::with_session,
 };
 

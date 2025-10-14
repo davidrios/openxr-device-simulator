@@ -36,7 +36,7 @@ pub extern "system" fn create(
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedActionSpace {
-    action: u64,
-    subaction_path: u64,
-    pose: xr::Posef,
+    pub(crate) action: u64,
+    pub(crate) subaction_path: u64,
+    pub(crate) pose: xr::Posef,
 }

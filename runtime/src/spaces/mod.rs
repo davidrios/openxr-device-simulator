@@ -65,8 +65,7 @@ pub extern "system" fn locate(
         &[xr_space.into_raw(), xr_base_space.into_raw()],
         |spaces| {
             let space_location = unsafe { &mut *space_location };
-            let (space, base_space) = (&*spaces[0], &*spaces[1]);
-            log::debug!("locate: {:?}, {:?}, {xr_time:?}", space, base_space);
+            let (space, _base_space) = (&*spaces[0], &*spaces[1]);
 
             space_location.location_flags = xr::SpaceLocationFlags::from_raw(0b1111);
             space_location.pose = match &space.space {
@@ -75,6 +74,8 @@ pub extern "system" fn locate(
                 }
                 SimulatedSpaceType::Action(simulated_action_space) => simulated_action_space.pose,
             };
+
+            log::debug!("locate: {xr_time:?}, {space_location:?}",);
 
             Ok(())
         },

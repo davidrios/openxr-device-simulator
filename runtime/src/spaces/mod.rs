@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    error::{Result, to_xr_result},
+    error::{Error, Result, to_xr_result},
     session::{SimulatedSession, SimulatedSessionSpace},
     with_session,
 };
@@ -55,14 +55,30 @@ pub extern "system" fn locate(
     xr_space: xr::Space,
     xr_base_space: xr::Space,
     xr_time: xr::Time,
-    xr_location: *mut xr::SpaceLocation,
+    space_location: *mut xr::SpaceLocation,
 ) -> xr::Result {
-    if xr_location.is_null() {
+    if space_location.is_null() {
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    log::debug!("locate: {xr_space:?}, {xr_base_space:?}, {xr_time:?}");
-    xr::Result::ERROR_FUNCTION_UNSUPPORTED
+    to_xr_result(get_simulated_space_cells(
+        &[xr_space.into_raw(), xr_base_space.into_raw()],
+        |spaces| {
+            let space_location = unsafe { &mut *space_location };
+            let (space, base_space) = (&*spaces[0], &*spaces[1]);
+            log::debug!("locate: {:?}, {:?}, {xr_time:?}", space, base_space);
+
+            space_location.location_flags = xr::SpaceLocationFlags::from_raw(0b1111);
+            space_location.pose = match &space.space {
+                SimulatedSpaceType::Reference(simulated_reference_space) => {
+                    simulated_reference_space.pose
+                }
+                SimulatedSpaceType::Action(simulated_action_space) => simulated_action_space.pose,
+            };
+
+            Ok(())
+        },
+    ))
 }
 
 pub extern "system" fn destroy(xr_obj: xr::Space) -> xr::Result {
@@ -117,3 +133,24 @@ type SharedSimulatedSpace = UnsafeCell<SimulatedSpace>;
 
 static INSTANCES: LazyLock<Mutex<HashMap<u64, SharedSimulatedSpace>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[inline]
+pub fn get_simulated_space_cells<const MAX: usize, T: Fn(&[&mut SimulatedSpace]) -> Result<()>>(
+    ids: &[u64; MAX],
+    f: T,
+) -> Result<()> {
+    let instances = INSTANCES.lock()?;
+    let mut res = Vec::with_capacity(MAX);
+    let slice = 0..MAX;
+    for i in slice {
+        let id = ids[i];
+        res.push(unsafe {
+            &mut *instances
+                .get(&id)
+                .ok_or_else(|| Error::ExpectedSome(format!("space {id} does not exist")))?
+                .get()
+        });
+    }
+
+    f(res.as_ref())
+}

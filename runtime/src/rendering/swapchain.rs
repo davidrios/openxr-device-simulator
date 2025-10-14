@@ -139,7 +139,6 @@ pub extern "system" fn enumerate_images(
 
         log::debug!("enumerate images");
 
-        #[allow(clippy::needless_range_loop)]
         for i in 0..swapchain.images.len() {
             let item = unsafe { &mut *(images as *mut xr::SwapchainImageVulkanKHR).add(i) };
             item.image = swapchain.images[i].image.as_raw();

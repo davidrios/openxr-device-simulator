@@ -84,5 +84,5 @@ pub extern "system" fn get_bounds_rect(
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedReferenceSpace {
-    pose: xr::Posef,
+    pub(crate) pose: xr::Posef,
 }

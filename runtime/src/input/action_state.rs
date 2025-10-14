@@ -1,37 +1,27 @@
 use crate::{
-    error::{Result, to_xr_result},
-    input::action::SimulatedActionValue,
-    with_action, with_instance, with_session,
+    error::{IntoXrResult, Result},
+    input::action::{SimulatedActionValue, with_action},
+    instance::api::with_instance,
+    session::with_session,
 };
 
-fn check_path_is_valid(instance_id: Result<u64>, path_id: u64) -> Result<()> {
+fn check_path_is_valid(instance_id: u64, path_id: u64) -> Result<()> {
     if path_id == 0 {
         return Ok(());
     }
 
-    match match instance_id {
-        Ok(instance_id) => {
-            with_instance!(xr::Instance::from_raw(instance_id), |instance| {
-                match instance.get_path_string(path_id) {
-                    Ok(path) => Ok(path.starts_with("/user/head")
-                        || path.starts_with("/user/hand/left")
-                        || path.starts_with("/user/hand/right")
-                        || path.starts_with("/user/gamepad")),
-                    Err(err) => Err(err),
-                }
-            })
+    with_instance(instance_id, |instance| {
+        let path = instance.get_path_string(path_id)?;
+        if path.starts_with("/user/head")
+            || path.starts_with("/user/hand/left")
+            || path.starts_with("/user/hand/right")
+            || path.starts_with("/user/gamepad")
+        {
+            Ok(())
+        } else {
+            Err(xr::Result::ERROR_PATH_UNSUPPORTED.into())
         }
-        Err(err) => return Err(err),
-    } {
-        Ok(is_valid_path) => {
-            if is_valid_path {
-                Ok(())
-            } else {
-                Err(xr::Result::ERROR_PATH_UNSUPPORTED.into())
-            }
-        }
-        Err(err) => Err(err),
-    }
+    })
 }
 
 macro_rules! get_action_value {
@@ -42,37 +32,31 @@ macro_rules! get_action_value {
 
         let (info, state) = unsafe { (&*$info, &mut *$state) };
 
-        to_xr_result(with_action!(info.action, |action| {
-            let instance_id_res: Result<u64> = with_session!($xr_session, |session| {
+        with_action(info.action.into_raw(), |action| {
+            let instance_id = with_session($xr_session, |session| {
                 if !session.has_attached_action_set(action.action_set_id) {
-                    return xr::Result::ERROR_ACTIONSET_NOT_ATTACHED;
+                    return Err(xr::Result::ERROR_ACTIONSET_NOT_ATTACHED.into());
                 }
                 Ok(session.instance_id)
-            });
+            })?;
 
             log::debug!("get value {info:?}");
 
-            if let Err(err) = check_path_is_valid(instance_id_res, info.subaction_path.into_raw()) {
-                return err.into();
-            }
+            check_path_is_valid(instance_id, info.subaction_path.into_raw())?;
 
-            match action.subaction_value(info.subaction_path.into_raw()) {
-                Ok(value) => {
-                    match value.current {
-                        $value_enum => {
-                            state.current_state = $value.into();
-                        }
-                        _ => return xr::Result::ERROR_ACTION_TYPE_MISMATCH,
-                    }
-
-                    state.is_active = value.is_active.into();
-                    state.changed_since_last_sync = value.changed_since_last_sync.into();
+            let value = action.subaction_value(info.subaction_path.into_raw())?;
+            match value.current {
+                $value_enum => {
+                    state.current_state = $value.into();
                 }
-                Err(err) => return err.into(),
+                _ => return Err(xr::Result::ERROR_ACTION_TYPE_MISMATCH.into()),
             }
 
+            state.is_active = value.is_active.into();
+            state.changed_since_last_sync = value.changed_since_last_sync.into();
             Ok(())
-        }))
+        })
+        .into_xr_result()
     }};
 }
 
@@ -82,8 +66,9 @@ pub extern "system" fn get_boolean(
     info: *const xr::ActionStateGetInfo,
     state: *mut xr::ActionStateBoolean,
 ) -> xr::Result {
+    let xr_obj_id = xr_session.into_raw();
     get_action_value!(
-        xr_session,
+        xr_obj_id,
         info,
         state,
         // needs to be a single line for the macro
@@ -97,8 +82,9 @@ pub extern "system" fn get_float(
     info: *const xr::ActionStateGetInfo,
     state: *mut xr::ActionStateFloat,
 ) -> xr::Result {
+    let xr_obj_id = xr_session.into_raw();
     get_action_value!(
-        xr_session,
+        xr_obj_id,
         info,
         state,
         // needs to be a single line for the macro
@@ -112,8 +98,9 @@ pub extern "system" fn get_vector2f(
     info: *const xr::ActionStateGetInfo,
     state: *mut xr::ActionStateVector2f,
 ) -> xr::Result {
+    let xr_obj_id = xr_session.into_raw();
     get_action_value!(
-        xr_session,
+        xr_obj_id,
         info,
         state,
         // needs to be a single line for the macro
@@ -133,34 +120,28 @@ pub extern "system" fn get_pose(
 
     let (info, state) = unsafe { (&*info, &mut *state) };
 
-    to_xr_result(with_action!(info.action, |action| {
-        let instance_id_res: Result<u64> = with_session!(xr_session, |session| {
+    with_action(info.action.into_raw(), |action| {
+        let instance_id = with_session(xr_session.into_raw(), |session| {
             if !session.has_attached_action_set(action.action_set_id) {
-                return xr::Result::ERROR_ACTIONSET_NOT_ATTACHED;
+                return Err(xr::Result::ERROR_ACTIONSET_NOT_ATTACHED.into());
             }
             Ok(session.instance_id)
-        });
+        })?;
 
         log::debug!("get_pose {info:?}");
 
-        if let Err(err) = check_path_is_valid(instance_id_res, info.subaction_path.into_raw()) {
-            return err.into();
-        }
+        check_path_is_valid(instance_id, info.subaction_path.into_raw())?;
 
-        match action.subaction_value(info.subaction_path.into_raw()) {
-            Ok(value) => {
-                match value.current {
-                    SimulatedActionValue::Pose(_) => {}
-                    _ => return xr::Result::ERROR_ACTION_TYPE_MISMATCH,
-                }
-
+        let value = action.subaction_value(info.subaction_path.into_raw())?;
+        match value.current {
+            SimulatedActionValue::Pose(_) => {
                 state.is_active = value.is_active.into();
+                Ok(())
             }
-            Err(err) => return err.into(),
+            _ => Err(xr::Result::ERROR_ACTION_TYPE_MISMATCH.into()),
         }
-
-        Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(unreachable_code)]
@@ -185,19 +166,20 @@ pub extern "system" fn sync_actions(
         )
     };
 
-    to_xr_result(with_session!(xr_session, |session| {
+    with_session(xr_session.into_raw(), |session| {
         if !session.is_focused() {
-            return xr::Result::SESSION_NOT_FOCUSED;
+            return Err(xr::Result::SESSION_NOT_FOCUSED.into());
         }
 
         log::debug!("sync_actions {active_action_sets:?}");
 
         for active_action_set in active_action_sets {
             if !session.has_attached_action_set(active_action_set.action_set.into_raw()) {
-                return xr::Result::ERROR_ACTIONSET_NOT_ATTACHED;
+                return Err(xr::Result::ERROR_ACTIONSET_NOT_ATTACHED.into());
             }
         }
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }

@@ -1,4 +1,4 @@
-use crate::{error::to_xr_result, with_session};
+use crate::{error::IntoXrResult, session::with_session};
 
 #[allow(unreachable_code)]
 pub extern "system" fn locate_views(
@@ -34,9 +34,9 @@ pub extern "system" fn locate_views(
 
     log::debug!("locate_views {info:?}");
 
-    to_xr_result(with_session!(xr_session, |session| {
+    with_session(xr_session.into_raw(), |session| {
         if !session.space_ids.contains_key(&info.space.into_raw()) {
-            return xr::Result::ERROR_SESSION_LOST;
+            return Err(xr::Result::ERROR_SESSION_LOST.into());
         }
 
         let view_state = unsafe { &mut *view_state };
@@ -46,5 +46,6 @@ pub extern "system" fn locate_views(
         }
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }

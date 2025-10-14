@@ -2,7 +2,9 @@ use std::ffi::c_char;
 
 use ash::vk::{Handle, KHR_SURFACE_NAME, KHR_SWAPCHAIN_NAME, KHR_WAYLAND_SURFACE_NAME, QueueFlags};
 
-use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, utils::ExtList, with_instance};
+use crate::{
+    error::IntoXrResult, instance::api::with_instance, system::HMD_SYSTEM_ID, utils::ExtList,
+};
 
 pub extern "system" fn get_graphics_requirements(
     xr_instance: xr::Instance,
@@ -19,11 +21,12 @@ pub extern "system" fn get_graphics_requirements(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         requirements.min_api_version_supported = xr::Version::new(1, 0, 0);
         requirements.max_api_version_supported = xr::Version::new(1, 3, 0);
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn get_graphics_device(
@@ -78,11 +81,12 @@ pub extern "system" fn get_graphics_device(
         }
     };
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         unsafe { *vk_physical_device = handle }
         log::debug!("returning graphics device {handle:x}");
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn get_instance_extensions(
@@ -98,7 +102,7 @@ pub extern "system" fn get_instance_extensions(
 
     let count_out = unsafe { &mut *count_out };
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         let exts = ExtList::new(vec![
             KHR_SURFACE_NAME.to_bytes(),
             KHR_WAYLAND_SURFACE_NAME.to_bytes(),
@@ -107,17 +111,18 @@ pub extern "system" fn get_instance_extensions(
 
         if capacity_in == 0 {
             *count_out = size as u32;
-            return xr::Result::SUCCESS;
+            return Ok(());
         }
 
         if *count_out != size as u32 {
-            return xr::Result::ERROR_SIZE_INSUFFICIENT;
+            return Err(xr::Result::ERROR_SIZE_INSUFFICIENT.into());
         }
 
         exts.copy_to_cchar_ptr(buffer);
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn get_device_extensions(
@@ -133,25 +138,26 @@ pub extern "system" fn get_device_extensions(
 
     let count_out = unsafe { &mut *count_out };
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         let exts = ExtList::new(vec![KHR_SWAPCHAIN_NAME.to_bytes()]);
         let size = exts.len();
 
         if capacity_in == 0 {
             *count_out = size as u32;
-            return xr::Result::SUCCESS;
+            return Ok(());
         }
 
         if *count_out != size as u32 {
-            return xr::Result::ERROR_SIZE_INSUFFICIENT;
+            return Err(xr::Result::ERROR_SIZE_INSUFFICIENT.into());
         }
 
         if buffer.is_null() {
-            return xr::Result::ERROR_VALIDATION_FAILURE;
+            return Err(xr::Result::ERROR_VALIDATION_FAILURE.into());
         }
 
         exts.copy_to_cchar_ptr(buffer);
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }

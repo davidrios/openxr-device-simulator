@@ -1,4 +1,4 @@
-use crate::{error::to_xr_result, with_session};
+use crate::{error::IntoXrResult, session::with_session};
 
 pub extern "system" fn enumerate(
     xr_session: xr::Session,
@@ -8,14 +8,14 @@ pub extern "system" fn enumerate(
 ) -> xr::Result {
     let count_out = unsafe { &mut *count_out };
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         if capacity_in == 0 {
             *count_out = 3;
-            return xr::Result::SUCCESS;
+            return Ok(());
         }
 
         if *count_out != 3 {
-            return xr::Result::ERROR_SIZE_INSUFFICIENT;
+            return Err(xr::Result::ERROR_SIZE_INSUFFICIENT.into());
         }
 
         unsafe {
@@ -25,7 +25,8 @@ pub extern "system" fn enumerate(
         }
 
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn create(
@@ -43,20 +44,17 @@ pub extern "system" fn create(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_session!(xr_session, |session| {
-        match super::create(
+    with_session(xr_session.into_raw(), |session| {
+        let space_id = super::create(
             session,
             super::SimulatedSpaceType::Reference(SimulatedReferenceSpace {
                 pose: create_info.pose_in_reference_space,
             }),
-        ) {
-            Ok(space_id) => {
-                *xr_space = xr::Space::from_raw(space_id);
-                Ok(())
-            }
-            Err(err) => Err(err),
-        }
-    }))
+        )?;
+        *xr_space = xr::Space::from_raw(space_id);
+        Ok(())
+    })
+    .into_xr_result()
 }
 
 #[allow(unreachable_code)]
@@ -73,12 +71,13 @@ pub extern "system" fn get_bounds_rect(
 
     log::debug!("get_bounds_rect {ref_space_type:?}");
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         bounds.width = 0.0;
         bounds.height = 0.0;
-        return xr::Result::SPACE_BOUNDS_UNAVAILABLE;
+        return Err(xr::Result::SPACE_BOUNDS_UNAVAILABLE.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(dead_code)]

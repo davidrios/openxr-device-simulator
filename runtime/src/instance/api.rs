@@ -6,30 +6,10 @@ use std::{
 };
 
 use crate::{
-    error::{Error, Result, to_xr_result},
+    error::{Error, IntoXrResult, Result},
     event::create_queue,
-    utils::{copy_str_to_cchar_ptr, copy_u8slice_to_cchar_arr},
+    utils::{copy_str_to_cchar_ptr, copy_u8slice_to_cchar_arr, with_obj_instance},
 };
-
-#[macro_export]
-macro_rules! with_instance {
-    ($xr_instance:expr, |$instance:ident| $expr:expr) => {{
-        if $xr_instance == xr::Instance::NULL {
-            Err(xr::Result::ERROR_HANDLE_INVALID.into())
-        } else {
-            match $crate::instance::api::get_simulated_instance_cell($xr_instance) {
-                Ok(instance_ptr) => {
-                    let $instance = unsafe { &mut *instance_ptr };
-                    $expr
-                }
-                Err(err) => {
-                    log::error!("error: {err}");
-                    Err(openxr_sys::Result::ERROR_INSTANCE_LOST.into())
-                }
-            }
-        }
-    }};
-}
 
 use super::obj::SimulatedInstance;
 
@@ -73,13 +53,6 @@ pub extern "system" fn enumerate_extension_properties(
     xr::Result::SUCCESS
 }
 
-static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
-
-type SharedSimulatedInstance = UnsafeCell<SimulatedInstance>;
-
-static INSTANCES: LazyLock<Mutex<HashMap<u64, SharedSimulatedInstance>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
 pub extern "system" fn create(
     create_info: *const xr::InstanceCreateInfo,
     xr_instance: *mut xr::Instance,
@@ -107,15 +80,6 @@ pub extern "system" fn create(
     });
 
     xr::Result::SUCCESS
-}
-
-#[inline]
-pub fn get_simulated_instance_cell(instance: xr::Instance) -> Result<*mut SimulatedInstance> {
-    Ok(INSTANCES
-        .lock()?
-        .get(&instance.into_raw())
-        .ok_or_else(|| Error::ExpectedSome("instance does not exist".into()))?
-        .get())
 }
 
 pub extern "system" fn destroy(xr_obj: xr::Instance) -> xr::Result {
@@ -153,7 +117,10 @@ pub extern "system" fn create_from_instance(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_instance!(*xr_instance, |instance| instance.create(create_info)))
+    with_instance((*xr_instance).into_raw(), |instance| {
+        instance.create(create_info)
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn get_properties(
@@ -169,7 +136,10 @@ pub extern "system" fn get_properties(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_instance!(xr_instance, |instance| instance.get_properties(properties)))
+    with_instance(xr_instance.into_raw(), |instance| {
+        instance.get_properties(properties)
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn result_to_string(
@@ -181,7 +151,7 @@ pub extern "system" fn result_to_string(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         let result_int = xr_result.into_raw();
         let res = if result_int >= 0 {
             format!("XR_UNKNOWN_SUCCESS_{result_int}")
@@ -191,7 +161,8 @@ pub extern "system" fn result_to_string(
         copy_str_to_cchar_ptr::<{ xr::MAX_RESULT_STRING_SIZE }>(&res, buf);
         log::debug!("result_to_string {xr_result}->{res}");
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn structure_type_to_string(
@@ -203,11 +174,35 @@ pub extern "system" fn structure_type_to_string(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         let result_int = structure_type.into_raw();
         let res = format!("XR_UNKNOWN_STRUCTURE_TYPE_{result_int}");
         copy_str_to_cchar_ptr::<{ xr::MAX_RESULT_STRING_SIZE }>(&res, buf);
         log::debug!("structure_type_to_string {structure_type:?}->{res}");
         Ok(())
-    }))
+    })
+    .into_xr_result()
+}
+
+static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
+
+type SharedSimulatedInstance = UnsafeCell<SimulatedInstance>;
+
+static INSTANCES: LazyLock<Mutex<HashMap<u64, SharedSimulatedInstance>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn with_instance<T, F>(xr_instance_id: u64, f: F) -> Result<T>
+where
+    F: FnMut(&mut SimulatedInstance) -> Result<T>,
+{
+    match with_obj_instance(&INSTANCES, xr_instance_id, f) {
+        Ok(res) => Ok(res),
+        Err(err) => match err {
+            Error::ExpectedSome(err) => {
+                log::error!("error: {err}");
+                Err(openxr_sys::Result::ERROR_INSTANCE_LOST.into())
+            }
+            _ => Err(err),
+        },
+    }
 }

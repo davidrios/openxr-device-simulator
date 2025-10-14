@@ -1,4 +1,4 @@
-use crate::{error::to_xr_result, with_session};
+use crate::{error::IntoXrResult, session::with_session};
 
 #[allow(unreachable_code)]
 pub extern "system" fn apply_feedback(
@@ -16,11 +16,12 @@ pub extern "system" fn apply_feedback(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         log::debug!("apply_feedback {info:?}, {header:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(unreachable_code)]
@@ -38,9 +39,10 @@ pub extern "system" fn stop_feedback(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         log::debug!("stop_feedback {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }

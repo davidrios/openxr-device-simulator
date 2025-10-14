@@ -5,9 +5,8 @@ use std::{
 };
 
 use crate::{
-    error::{Error, Result, to_xr_result},
-    session::{SimulatedSession, SimulatedSessionSpace},
-    with_session,
+    error::{Error, IntoXrResult, Result},
+    session::{SimulatedSession, SimulatedSessionSpace, with_session},
 };
 
 pub mod action;
@@ -26,7 +25,7 @@ pub fn create(session: &mut SimulatedSession, space: SimulatedSpaceType) -> Resu
         UnsafeCell::new(SimulatedSpace::new(session.id, next_id, space)?),
     );
 
-    log::debug!("create space: {:?}", unsafe { &*spaces[&next_id].get() });
+    log::debug!("created: {:?}", unsafe { &*spaces[&next_id].get() });
 
     session.set_space(session_space, next_id)?;
     Ok(next_id)
@@ -44,11 +43,12 @@ pub extern "system" fn locate_spaces(
 
     let (info, _locations) = unsafe { (&*info, &mut *locations) };
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         log::debug!("locate_spaces: {info:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn locate(
@@ -61,25 +61,23 @@ pub extern "system" fn locate(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(get_simulated_space_cells(
-        &[xr_space.into_raw(), xr_base_space.into_raw()],
-        |spaces| {
-            let space_location = unsafe { &mut *space_location };
-            let (space, _base_space) = (&*spaces[0], &*spaces[1]);
+    with_simulated_spaces(&[xr_space.into_raw(), xr_base_space.into_raw()], |spaces| {
+        let space_location = unsafe { &mut *space_location };
+        let (space, _base_space) = (&*spaces[0], &*spaces[1]);
 
-            space_location.location_flags = xr::SpaceLocationFlags::from_raw(0b1111);
-            space_location.pose = match &space.space {
-                SimulatedSpaceType::Reference(simulated_reference_space) => {
-                    simulated_reference_space.pose
-                }
-                SimulatedSpaceType::Action(simulated_action_space) => simulated_action_space.pose,
-            };
+        space_location.location_flags = xr::SpaceLocationFlags::from_raw(0b1111);
+        space_location.pose = match &space.space {
+            SimulatedSpaceType::Reference(simulated_reference_space) => {
+                simulated_reference_space.pose
+            }
+            SimulatedSpaceType::Action(simulated_action_space) => simulated_action_space.pose,
+        };
 
-            log::debug!("locate: {xr_time:?}, {space_location:?}",);
+        log::debug!("locate: {xr_time:?}, {space_location:?}",);
 
-            Ok(())
-        },
-    ))
+        Ok(())
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn destroy(xr_obj: xr::Space) -> xr::Result {
@@ -118,8 +116,6 @@ pub struct SimulatedSpace {
     space: SimulatedSpaceType,
 }
 
-static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
-
 impl SimulatedSpace {
     pub fn new(session_id: u64, id: u64, space: SimulatedSpaceType) -> Result<Self> {
         Ok(Self {
@@ -130,15 +126,17 @@ impl SimulatedSpace {
     }
 }
 
+static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
+
 type SharedSimulatedSpace = UnsafeCell<SimulatedSpace>;
 
 static INSTANCES: LazyLock<Mutex<HashMap<u64, SharedSimulatedSpace>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[inline]
-pub fn get_simulated_space_cells<const MAX: usize, T: Fn(&[&mut SimulatedSpace]) -> Result<()>>(
+pub fn with_simulated_spaces<const MAX: usize, F: Fn(&[&mut SimulatedSpace]) -> Result<()>>(
     ids: &[u64; MAX],
-    f: T,
+    f: F,
 ) -> Result<()> {
     let instances = INSTANCES.lock()?;
     let mut res = Vec::with_capacity(MAX);

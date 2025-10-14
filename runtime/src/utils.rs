@@ -1,4 +1,13 @@
-use std::{ffi::c_char, ptr, time::Duration};
+use std::{
+    cell::UnsafeCell,
+    collections::HashMap,
+    ffi::c_char,
+    ptr,
+    sync::{LazyLock, Mutex},
+    time::Duration,
+};
+
+use crate::error::{Error, Result};
 
 #[macro_export]
 macro_rules! bind_api_fn {
@@ -6,6 +15,28 @@ macro_rules! bind_api_fn {
         let fn_ptr: $fn_type = $fn_name;
         std::mem::transmute::<$fn_type, openxr_sys::pfn::VoidFunction>(fn_ptr)
     }};
+}
+
+#[inline]
+pub fn with_obj_instance<T, U, F>(
+    instances: &LazyLock<Mutex<HashMap<u64, UnsafeCell<U>>>>,
+    obj_id: u64,
+    mut f: F,
+) -> Result<T>
+where
+    F: FnMut(&mut U) -> Result<T>,
+{
+    if obj_id == 0 {
+        return Err(xr::Result::ERROR_HANDLE_INVALID.into());
+    }
+
+    f(unsafe {
+        &mut *instances
+            .lock()?
+            .get(&obj_id)
+            .ok_or_else(|| Error::ExpectedSome(format!("obj instance {obj_id} does not exist")))?
+            .get()
+    })
 }
 
 pub fn copy_u8slice_to_cchar_arr<const MAX: usize>(src: &[u8], dst: &mut [c_char; MAX]) {

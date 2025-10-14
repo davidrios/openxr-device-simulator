@@ -1,4 +1,4 @@
-use crate::{error::to_xr_result, system::HMD_SYSTEM_ID, with_instance};
+use crate::{error::IntoXrResult, instance::api::with_instance, system::HMD_SYSTEM_ID};
 
 pub extern "system" fn enumerate_configurations(
     xr_instance: xr::Instance,
@@ -13,23 +13,24 @@ pub extern "system" fn enumerate_configurations(
 
     let count_out = unsafe { &mut *count_out };
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         if capacity_in == 0 {
             *count_out = 1;
-            return xr::Result::SUCCESS;
+            return Ok(());
         }
 
         if *count_out != 1 {
-            return xr::Result::ERROR_SIZE_INSUFFICIENT;
+            return Err(xr::Result::ERROR_SIZE_INSUFFICIENT.into());
         }
 
         if configuration_types.is_null() {
-            return xr::Result::ERROR_VALIDATION_FAILURE;
+            return Err(xr::Result::ERROR_VALIDATION_FAILURE.into());
         }
 
         unsafe { *configuration_types = xr::ViewConfigurationType::PRIMARY_STEREO }
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn get_configuration_properties(
@@ -52,11 +53,12 @@ pub extern "system" fn get_configuration_properties(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         properties.view_configuration_type = xr::ViewConfigurationType::PRIMARY_STEREO;
         properties.fov_mutable = xr::FALSE;
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn enumerate_configuration_views(
@@ -77,18 +79,18 @@ pub extern "system" fn enumerate_configuration_views(
 
     let count_out = unsafe { &mut *count_out };
 
-    to_xr_result(with_instance!(xr_instance, |_instance| {
+    with_instance(xr_instance.into_raw(), |_instance| {
         if capacity_in == 0 {
             *count_out = 2;
-            return xr::Result::SUCCESS;
+            return Ok(());
         }
 
         if *count_out != 2 {
-            return xr::Result::ERROR_SIZE_INSUFFICIENT;
+            return Err(xr::Result::ERROR_SIZE_INSUFFICIENT.into());
         }
 
         if views.is_null() {
-            return xr::Result::ERROR_VALIDATION_FAILURE;
+            return Err(xr::Result::ERROR_VALIDATION_FAILURE.into());
         }
 
         unsafe {
@@ -106,6 +108,8 @@ pub extern "system" fn enumerate_configuration_views(
                 };
             }
         };
+
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }

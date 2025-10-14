@@ -1,4 +1,8 @@
-use crate::{error::to_xr_result, instance::obj::ActionBinding, with_instance, with_session};
+use crate::{
+    error::IntoXrResult,
+    instance::{api::with_instance, obj::ActionBinding},
+    session::with_session,
+};
 
 pub extern "system" fn suggest(
     xr_instance: xr::Instance,
@@ -12,9 +16,9 @@ pub extern "system" fn suggest(
 
     log::debug!("suggest interaction profile: {:?}", suggestion);
 
-    to_xr_result(with_instance!(xr_instance, |instance| {
+    with_instance(xr_instance.into_raw(), |instance| {
         if suggestion.count_suggested_bindings == 0 || suggestion.suggested_bindings.is_null() {
-            return xr::Result::ERROR_VALIDATION_FAILURE;
+            return Err(xr::Result::ERROR_VALIDATION_FAILURE.into());
         }
 
         let mut bindings = Vec::new();
@@ -29,7 +33,8 @@ pub extern "system" fn suggest(
 
         instance
             .set_interaction_profile_bindings(suggestion.interaction_profile.into_raw(), bindings)
-    }))
+    })
+    .into_xr_result()
 }
 
 #[allow(unreachable_code)]
@@ -44,9 +49,10 @@ pub extern "system" fn get_current(
 
     let _interaction_profile = unsafe { &mut *interaction_profile };
 
-    to_xr_result(with_session!(xr_session, |_session| {
+    with_session(xr_session.into_raw(), |_session| {
         log::debug!("get_current {top_level_user_path:?}");
-        return xr::Result::ERROR_FUNCTION_UNSUPPORTED;
+        return Err(xr::Result::ERROR_FUNCTION_UNSUPPORTED.into());
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }

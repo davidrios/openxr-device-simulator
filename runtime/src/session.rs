@@ -7,28 +7,13 @@ use std::{
 use ash::vk::Handle;
 
 use crate::{
-    error::{Error, Result, to_xr_result},
+    error::{Error, IntoXrResult, Result},
     event::{Event, schedule_event},
+    instance::api::with_instance,
     loader::START_TIME,
     system::HMD_SYSTEM_ID,
-    with_instance,
+    utils::with_obj_instance,
 };
-
-#[macro_export]
-macro_rules! with_session {
-    ($xr_session:expr, |$instance:ident| $expr:expr) => {{
-        match $crate::session::get_simulated_session_cell($xr_session) {
-            Ok(instance_ptr) => {
-                let $instance = unsafe { &mut *instance_ptr };
-                $expr
-            }
-            Err(err) => {
-                log::error!("error: {err}");
-                Err(openxr_sys::Result::ERROR_SESSION_LOST.into())
-            }
-        }
-    }};
-}
 
 pub extern "system" fn create(
     xr_instance: xr::Instance,
@@ -51,26 +36,27 @@ pub extern "system" fn create(
 
     log::debug!("create: {:?}", create_info);
 
-    to_xr_result(with_instance!(xr_instance, |instance| {
+    with_instance(xr_instance.into_raw(), |instance| {
         let mut session_instances = INSTANCES.lock().unwrap();
         let next_id = INSTANCE_COUNTER.fetch_add(1, atomic::Ordering::SeqCst);
         session_instances.insert(
             next_id,
-            UnsafeCell::new(
-                match SimulatedSession::new(xr_instance.into_raw(), next_id, create_info) {
-                    Ok(sess) => {
-                        log::debug!("created: {:?}", &sess);
-                        sess
-                    }
-                    Err(err) => return err.into(),
-                },
-            ),
+            UnsafeCell::new(SimulatedSession::new(
+                xr_instance.into_raw(),
+                next_id,
+                create_info,
+            )?),
         );
+
+        log::debug!("created: {:?}", unsafe {
+            &*session_instances[&next_id].get()
+        });
 
         *xr_session = xr::Session::from_raw(next_id);
 
         instance.set_session(next_id)
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn destroy(xr_obj: xr::Session) -> xr::Result {
@@ -119,14 +105,13 @@ pub extern "system" fn attach_action_sets(
         )
     };
 
-    to_xr_result(with_session!(xr_session, |session| {
+    with_session(xr_session.into_raw(), |session| {
         for item in action_sets {
-            if let Err(err) = session.attach_action_set(item.into_raw()) {
-                return err.into();
-            }
+            session.attach_action_set(item.into_raw())?;
         }
         Ok(())
-    }))
+    })
+    .into_xr_result()
 }
 
 pub extern "system" fn begin(
@@ -147,15 +132,15 @@ pub extern "system" fn begin(
         return xr::Result::ERROR_VIEW_CONFIGURATION_TYPE_UNSUPPORTED;
     }
 
-    to_xr_result(with_session!(xr_session, |session| session.begin()))
+    with_session(xr_session.into_raw(), |session| session.begin()).into_xr_result()
 }
 
 pub extern "system" fn request_exit(xr_session: xr::Session) -> xr::Result {
-    to_xr_result(with_session!(xr_session, |session| session.request_exit()))
+    with_session(xr_session.into_raw(), |session| session.request_exit()).into_xr_result()
 }
 
 pub extern "system" fn end(xr_session: xr::Session) -> xr::Result {
-    to_xr_result(with_session!(xr_session, |session| session.end()))
+    with_session(xr_session.into_raw(), |session| session.end()).into_xr_result()
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -224,17 +209,6 @@ pub struct SimulatedSession {
     pub(crate) swapchain_ids: HashSet<u64>,
     pub(crate) state: xr::SessionState,
     pub(crate) is_running: bool,
-}
-
-static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
-
-#[inline]
-pub fn get_simulated_session_cell(instance: xr::Session) -> Result<*mut SimulatedSession> {
-    Ok(INSTANCES
-        .lock()?
-        .get(&instance.into_raw())
-        .ok_or_else(|| Error::ExpectedSome("session does not exist".into()))?
-        .get())
 }
 
 impl SimulatedSession {
@@ -389,7 +363,25 @@ impl SimulatedSession {
     }
 }
 
+static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
+
 type SharedSimulatedSession = UnsafeCell<SimulatedSession>;
 
 static INSTANCES: LazyLock<Mutex<HashMap<u64, SharedSimulatedSession>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn with_session<T, F>(xr_obj_id: u64, f: F) -> Result<T>
+where
+    F: FnMut(&mut SimulatedSession) -> Result<T>,
+{
+    match with_obj_instance(&INSTANCES, xr_obj_id, f) {
+        Ok(res) => Ok(res),
+        Err(err) => match err {
+            Error::ExpectedSome(err) => {
+                log::error!("error: {err}");
+                Err(openxr_sys::Result::ERROR_SESSION_LOST.into())
+            }
+            _ => Err(err),
+        },
+    }
+}

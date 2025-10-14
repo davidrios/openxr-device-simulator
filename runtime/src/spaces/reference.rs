@@ -57,7 +57,6 @@ pub extern "system" fn create(
     .into_xr_result()
 }
 
-#[allow(unreachable_code)]
 pub extern "system" fn get_bounds_rect(
     xr_session: xr::Session,
     ref_space_type: xr::ReferenceSpaceType,
@@ -74,8 +73,7 @@ pub extern "system" fn get_bounds_rect(
     with_session(xr_session.into_raw(), |_session| {
         bounds.width = 0.0;
         bounds.height = 0.0;
-        return Err(xr::Result::SPACE_BOUNDS_UNAVAILABLE.into());
-        Ok(())
+        Ok(xr::Result::SPACE_BOUNDS_UNAVAILABLE)
     })
     .into_xr_result()
 }

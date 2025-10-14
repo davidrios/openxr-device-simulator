@@ -1,11 +1,6 @@
 use std::{mem::transmute, thread, time::Duration};
 
-use crate::{
-    error::{IntoXrResult, Result},
-    loader::START_TIME,
-    session::with_session,
-    utils::MyTime,
-};
+use crate::{loader::START_TIME, prelude::*, session::with_session, utils::MyTime};
 
 pub extern "system" fn wait(
     xr_session: xr::Session,

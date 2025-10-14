@@ -2,12 +2,11 @@ use std::{
     cell::UnsafeCell,
     collections::HashMap,
     ffi::c_char,
-    ptr,
     sync::{LazyLock, Mutex},
     time::Duration,
 };
 
-use crate::error::{Error, Result};
+use crate::prelude::*;
 
 #[macro_export]
 macro_rules! bind_api_fn {
@@ -44,7 +43,9 @@ pub fn copy_u8slice_to_cchar_arr<const MAX: usize>(src: &[u8], dst: &mut [c_char
         panic!("src is too large");
     }
 
-    unsafe { ptr::copy_nonoverlapping(src.as_ptr() as *const c_char, dst.as_mut_ptr(), src.len()) };
+    unsafe {
+        std::ptr::copy_nonoverlapping(src.as_ptr() as *const c_char, dst.as_mut_ptr(), src.len())
+    };
 }
 
 pub fn copy_str_to_cchar_arr<const MAX: usize>(src: &str, dst: &mut [c_char; MAX]) {
@@ -83,7 +84,7 @@ impl<'a> ExtList<'a> {
             let mut offset = 0;
             for i in 0..self.exts.len() {
                 let src = self.exts[i];
-                ptr::copy_nonoverlapping(
+                std::ptr::copy_nonoverlapping(
                     src.as_ptr() as *const c_char,
                     buffer.add(offset),
                     src.len(),

@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
-    error::{IntoXrResult, Result},
     input::action_set::with_action_set,
+    prelude::*,
     session::with_session,
     utils::{create_identity_pose, with_obj_instance},
 };

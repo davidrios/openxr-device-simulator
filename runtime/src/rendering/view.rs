@@ -1,4 +1,4 @@
-use crate::{error::IntoXrResult, session::with_session};
+use crate::{prelude::*, session::with_session};
 
 #[allow(unreachable_code)]
 pub extern "system" fn locate_views(

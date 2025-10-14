@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::{
-    error::{IntoXrResult, Result},
     instance::api::with_instance,
+    prelude::*,
     utils::{MyTime, with_obj_instance},
 };
 

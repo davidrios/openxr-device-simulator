@@ -1,4 +1,4 @@
-use crate::{error::IntoXrResult, instance::api::with_instance, utils::copy_str_to_cchar_arr};
+use crate::{instance::api::with_instance, prelude::*, utils::copy_str_to_cchar_arr};
 
 pub const HMD_SYSTEM_ID: u64 = 1;
 

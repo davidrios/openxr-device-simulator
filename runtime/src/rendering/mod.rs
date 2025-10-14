@@ -1,4 +1,4 @@
-use crate::{error::IntoXrResult, instance::api::with_instance, system::HMD_SYSTEM_ID};
+use crate::{instance::api::with_instance, prelude::*, system::HMD_SYSTEM_ID};
 
 pub mod frame;
 pub mod swapchain;

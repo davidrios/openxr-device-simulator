@@ -1,4 +1,4 @@
-use crate::{error::IntoXrResult, session::with_session};
+use crate::{prelude::*, session::with_session};
 
 pub extern "system" fn create(
     xr_session: xr::Session,

@@ -292,7 +292,7 @@ impl SimulatedSwapchain {
         };
 
         let index = self.acquired_images.pop_front().unwrap();
-        self.waited_images.push_front(index);
+        self.waited_images.push_back(index);
 
         log::debug!("[{}] wait_image -> {index}", self.id);
         Ok(xr::Result::SUCCESS)
@@ -310,6 +310,16 @@ impl SimulatedSwapchain {
 
         log::debug!("[{}] release_image ({info:?}) -> {index}", self.id);
         Ok(xr::Result::SUCCESS)
+    }
+
+    pub fn free_image(&mut self) -> Result<()> {
+        let Some(index) = self.released_images.pop_front() else {
+            return Err(xr::Result::ERROR_CALL_ORDER_INVALID.into());
+        };
+
+        self.available_images.push_back(index);
+
+        Ok(())
     }
 }
 

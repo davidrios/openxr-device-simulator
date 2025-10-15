@@ -1,6 +1,9 @@
-use std::{mem::transmute, thread, time::Duration};
+use std::{collections::HashSet, mem::transmute, thread, time::Duration};
 
-use crate::{loader::START_TIME, prelude::*, session::with_session, utils::MyTime};
+use crate::{
+    loader::START_TIME, prelude::*, rendering::swapchain::with_swapchain, session::with_session,
+    utils::MyTime,
+};
 
 pub extern "system" fn wait(
     xr_session: xr::Session,
@@ -86,6 +89,8 @@ pub extern "system" fn end(xr_session: xr::Session, info: *const xr::FrameEndInf
 
         log::debug!("[{}] end_frame ({info:?})", session.id);
 
+        let mut release_swapchains = HashSet::with_capacity(2);
+
         for layer in layers.unwrap_or_default() {
             match layer.ty {
                 xr::StructureType::COMPOSITION_LAYER_PROJECTION => {
@@ -95,10 +100,30 @@ pub extern "system" fn end(xr_session: xr::Session, info: *const xr::FrameEndInf
                             &&xr::CompositionLayerProjection,
                         >(layer)
                     };
-                    log::debug!("[{}] end_frame, layer: {layer:?}", session.id);
+
+                    if layer.view_count != 2 {
+                        return Err(xr::Result::ERROR_VALIDATION_FAILURE.into());
+                    }
+
+                    let views = unsafe {
+                        std::slice::from_raw_parts(layer.views, layer.view_count as usize)
+                    };
+
+                    log::debug!(
+                        "[{}] end_frame, layer: {layer:?}, views: {views:?}",
+                        session.id
+                    );
+
+                    for view in views {
+                        release_swapchains.insert(view.sub_image.swapchain.into_raw());
+                    }
                 }
                 _ => return Err(xr::Result::ERROR_RUNTIME_FAILURE.into()),
             }
+        }
+
+        for swapchain_id in release_swapchains {
+            with_swapchain(swapchain_id, |swapchain| swapchain.free_image())?;
         }
 
         session.frame.end()

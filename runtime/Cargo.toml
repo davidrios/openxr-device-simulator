@@ -21,6 +21,8 @@ tokio = "1.48.0"
 tower-http = { version = "0.6.6", features = ["cors"] }
 crossbeam-channel = "0.5.15"
 image = "0.25.8"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
 
 [lib]
 crate-type = ["cdylib"]

@@ -181,7 +181,6 @@ impl SessionFrame {
 
         if let Some(swapchains_to_read) = self.swapchains_to_read.as_ref() {
             let frame_number = FRAME_COUNTER.fetch_add(1, atomic::Ordering::Relaxed);
-            server::send_frame(frame_number as usize);
             for swapchain_id in swapchains_to_read {
                 with_swapchain(*swapchain_id, |swapchain| {
                     swapchain.dump_frame(frame_number);

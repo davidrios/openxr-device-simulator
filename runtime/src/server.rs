@@ -1,7 +1,5 @@
-use std::{
-    sync::{Mutex, atomic},
-    time::Duration,
-};
+use std::sync::{LazyLock, Mutex, atomic};
+use std::time::Duration;
 
 use axum::{http, routing};
 use socketioxide::{
@@ -12,6 +10,19 @@ use socketioxide::{
 use tower_http::cors;
 
 static IS_CONNECTED: atomic::AtomicBool = atomic::AtomicBool::new(false);
+
+/// Current head look direction (yaw, pitch) in radians, updated directly by the Socket.IO thread.
+static HEAD_LOOK: LazyLock<Mutex<(f32, f32)>> = LazyLock::new(|| Mutex::new((0.0, 0.0)));
+
+pub fn get_head_look() -> (f32, f32) {
+    *HEAD_LOOK.lock().unwrap()
+}
+
+#[derive(serde::Deserialize)]
+struct LookData {
+    yaw: f32,
+    pitch: f32,
+}
 static SERVER_S: Mutex<Option<crossbeam_channel::Sender<ServerMessage>>> = Mutex::new(None);
 static SERVER_R: Mutex<Option<crossbeam_channel::Receiver<ServerMessage>>> = Mutex::new(None);
 static CLIENT_S: Mutex<Option<crossbeam_channel::Sender<ClientMessage>>> = Mutex::new(None);
@@ -129,6 +140,10 @@ pub fn start() {
                         ack.send(&data).ok();
                     },
                 );
+
+                socket.on("look", async |Data::<LookData>(data)| {
+                    *HEAD_LOOK.lock().unwrap() = (data.yaw, data.pitch);
+                });
 
                 std::thread::spawn(move || {
                     while socket.connected() {

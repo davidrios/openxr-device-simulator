@@ -15,6 +15,12 @@ thiserror.workspace = true
 log.workspace = true
 env_logger.workspace = true
 ash.workspace = true
+socketioxide = "0.17.2"
+axum = "0.8.6"
+tokio = "1.48.0"
+tower-http = { version = "0.6.6", features = ["cors"] }
+crossbeam-channel = "0.5.15"
+image = "0.25.8"
 
 [lib]
 crate-type = ["cdylib"]

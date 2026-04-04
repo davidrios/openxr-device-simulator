@@ -6,6 +6,7 @@ mod instance;
 mod loader;
 mod path;
 mod rendering;
+mod server;
 mod session;
 mod spaces;
 mod system;

@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::{
-    bind_api_fn, event, haptics, input, instance, path, rendering, session, spaces, system, view,
-    vulkan,
+    bind_api_fn, event, haptics, input, instance, path, rendering, server, session, spaces, system,
+    view, vulkan,
 };
 
 static LOGGING_INITED: atomic::AtomicBool = atomic::AtomicBool::new(false);
@@ -41,6 +41,8 @@ pub extern "C" fn xrNegotiateLoaderRuntimeInterface(
     runtime_request.get_instance_proc_addr = Some(xr_get_instance_proc_addr);
 
     log::debug!("negotiation success");
+
+    server::start();
 
     xr::Result::SUCCESS
 }

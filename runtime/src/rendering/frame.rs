@@ -1,7 +1,17 @@
-use std::{collections::HashSet, mem::transmute, thread, time::Duration};
+use std::{
+    collections::HashSet,
+    mem::transmute,
+    sync::{Arc, Condvar, Mutex, atomic},
+    thread,
+    time::Duration,
+};
 
 use crate::{
-    loader::START_TIME, prelude::*, rendering::swapchain::with_swapchain, session::with_session,
+    loader::START_TIME,
+    prelude::*,
+    rendering::swapchain::with_swapchain,
+    server,
+    session::{SimulatedSession, with_session},
     utils::MyTime,
 };
 
@@ -89,7 +99,7 @@ pub extern "system" fn end(xr_session: xr::Session, info: *const xr::FrameEndInf
 
         log::debug!("[{}] end_frame ({info:?})", session.id);
 
-        let mut release_swapchains = HashSet::with_capacity(2);
+        let mut free_swapchains = HashSet::with_capacity(2);
 
         for layer in layers.unwrap_or_default() {
             match layer.ty {
@@ -115,40 +125,73 @@ pub extern "system" fn end(xr_session: xr::Session, info: *const xr::FrameEndInf
                     );
 
                     for view in views {
-                        release_swapchains.insert(view.sub_image.swapchain.into_raw());
+                        free_swapchains.insert(view.sub_image.swapchain.into_raw());
                     }
                 }
                 _ => return Err(xr::Result::ERROR_RUNTIME_FAILURE.into()),
             }
         }
 
-        for swapchain_id in release_swapchains {
-            with_swapchain(swapchain_id, |swapchain| swapchain.free_image())?;
+        for swapchain_id in &free_swapchains {
+            with_swapchain(*swapchain_id, |swapchain| swapchain.free_image())?;
         }
 
-        session.frame.end()
+        session.frame.end(free_swapchains.iter().copied().collect())
     })
     .into_xr_result()
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SessionFrame {
-    pub(crate) waiting_begin: bool,
+    pub(crate) waiting_begin: Arc<(Mutex<bool>, Condvar)>,
     pub(crate) is_waited: bool,
     pub(crate) is_began: bool,
+    pub(crate) swapchains_to_read: Option<Vec<u64>>,
+}
+
+impl Default for SessionFrame {
+    fn default() -> Self {
+        Self {
+            waiting_begin: Arc::new((Mutex::new(false), Condvar::new())),
+            is_waited: false,
+            is_began: false,
+            swapchains_to_read: None,
+        }
+    }
 }
 
 impl SessionFrame {
     pub fn wait(
         &mut self,
+        // session: &mut SimulatedSession,
         _info: Option<&xr::FrameWaitInfo>,
         frame_state: &mut xr::FrameState,
     ) -> Result<()> {
-        #[allow(clippy::while_immutable_condition)]
-        while self.waiting_begin {}
+        {
+            let (lock, cvar) = &*self.waiting_begin;
+            let mut guard = lock.lock().unwrap();
+            while *guard {
+                guard = cvar.wait(guard).unwrap();
+            }
+        } // release lock before doing any work
+
+        let start = START_TIME.elapsed();
+
+        while server::process_server_message().is_some() {}
+
+        if let Some(swapchains_to_read) = self.swapchains_to_read.as_ref() {
+            let frame_number = FRAME_COUNTER.fetch_add(1, atomic::Ordering::Relaxed);
+            server::send_frame(frame_number as usize);
+            for swapchain_id in swapchains_to_read {
+                with_swapchain(*swapchain_id, |swapchain| {
+                    swapchain.dump_frame(frame_number);
+                    Ok(())
+                })?;
+            }
+        }
 
         // throttle to 2 fps
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(3000) - (START_TIME.elapsed() - start));
 
         frame_state.predicted_display_time =
             MyTime::from(START_TIME.elapsed() + Duration::from_millis(1)).into();
@@ -156,7 +199,8 @@ impl SessionFrame {
         frame_state.should_render = xr::TRUE;
 
         self.is_waited = true;
-        self.waiting_begin = true;
+        let (lock, _) = &*self.waiting_begin;
+        *lock.lock().unwrap() = true;
 
         Ok(())
     }
@@ -166,7 +210,9 @@ impl SessionFrame {
             return Err(xr::Result::ERROR_CALL_ORDER_INVALID.into());
         }
 
-        self.waiting_begin = false;
+        let (lock, cvar) = &*self.waiting_begin;
+        *lock.lock().unwrap() = false;
+        cvar.notify_one();
         self.is_waited = false;
 
         if self.is_began {
@@ -182,8 +228,11 @@ impl SessionFrame {
         self.is_began
     }
 
-    pub fn end(&mut self) -> Result<()> {
+    pub fn end(&mut self, swapchains_to_read: Vec<u64>) -> Result<()> {
         self.is_began = false;
+        self.swapchains_to_read = Some(swapchains_to_read);
         Ok(())
     }
 }
+
+static FRAME_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(0);

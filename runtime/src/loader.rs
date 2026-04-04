@@ -133,6 +133,23 @@ extern "system" fn xr_get_instance_proc_addr(
                     vulkan::get_device_extensions
                 )),
 
+                "xrGetVulkanGraphicsRequirements2KHR" => Some(bind_api_fn!(
+                    xr::pfn::GetVulkanGraphicsRequirements2KHR,
+                    vulkan::get_graphics_requirements2
+                )),
+                "xrGetVulkanGraphicsDevice2KHR" => Some(bind_api_fn!(
+                    xr::pfn::GetVulkanGraphicsDevice2KHR,
+                    vulkan::get_graphics_device2
+                )),
+                "xrCreateVulkanInstanceKHR" => Some(bind_api_fn!(
+                    xr::pfn::CreateVulkanInstanceKHR,
+                    vulkan::create_vulkan_instance
+                )),
+                "xrCreateVulkanDeviceKHR" => Some(bind_api_fn!(
+                    xr::pfn::CreateVulkanDeviceKHR,
+                    vulkan::create_vulkan_device
+                )),
+
                 "xrCreateSession" => Some(bind_api_fn!(xr::pfn::CreateSession, session::create)),
                 "xrAttachSessionActionSets" => Some(bind_api_fn!(
                     xr::pfn::AttachSessionActionSets,
@@ -273,6 +290,19 @@ extern "system" fn xr_get_instance_proc_addr(
                 "xrStopHapticFeedback" => Some(bind_api_fn!(
                     xr::pfn::StopHapticFeedback,
                     haptics::stop_feedback
+                )),
+
+                "xrCreateHandTrackerEXT" => Some(bind_api_fn!(
+                    xr::pfn::CreateHandTrackerEXT,
+                    input::hand_tracking::create
+                )),
+                "xrDestroyHandTrackerEXT" => Some(bind_api_fn!(
+                    xr::pfn::DestroyHandTrackerEXT,
+                    input::hand_tracking::destroy
+                )),
+                "xrLocateHandJointsEXT" => Some(bind_api_fn!(
+                    xr::pfn::LocateHandJointsEXT,
+                    input::hand_tracking::locate_hand_joints
                 )),
 
                 _ => None,

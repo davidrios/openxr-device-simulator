@@ -13,10 +13,17 @@ use crate::{
 
 use super::obj::SimulatedInstance;
 
-const SUPPORTED_EXTS: &[(&[u8], u32)] = &[(
-    xr::KHR_VULKAN_ENABLE_EXTENSION_NAME,
-    xr::KHR_vulkan_enable_SPEC_VERSION,
-)];
+const SUPPORTED_EXTS: &[(&[u8], u32)] = &[
+    (
+        xr::KHR_VULKAN_ENABLE_EXTENSION_NAME,
+        xr::KHR_vulkan_enable_SPEC_VERSION,
+    ),
+    (
+        xr::KHR_VULKAN_ENABLE2_EXTENSION_NAME,
+        xr::KHR_vulkan_enable2_SPEC_VERSION,
+    ),
+    // (xr::EXT_HAND_TRACKING_EXTENSION_NAME, xr::EXT_hand_tracking_SPEC_VERSION),
+];
 
 pub extern "system" fn enumerate_extension_properties(
     layer_name: *const c_char,

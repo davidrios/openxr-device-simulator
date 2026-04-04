@@ -374,6 +374,40 @@ impl SimulatedSession {
                     time: START_TIME.elapsed().into(),
                 },
             )?;
+            self.set_visible()?;
+            self.set_focused()?;
+        }
+
+        Ok(())
+    }
+
+    pub fn set_visible(&mut self) -> Result<()> {
+        if matches!(self.state, xr::SessionState::SYNCHRONIZED) {
+            self.state = xr::SessionState::VISIBLE;
+            schedule_event(
+                self.instance_id,
+                &Event::SessionStateChanged {
+                    session: xr::Session::from_raw(self.id),
+                    state: self.state,
+                    time: START_TIME.elapsed().into(),
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn set_focused(&mut self) -> Result<()> {
+        if matches!(self.state, xr::SessionState::VISIBLE) {
+            self.state = xr::SessionState::FOCUSED;
+            schedule_event(
+                self.instance_id,
+                &Event::SessionStateChanged {
+                    session: xr::Session::from_raw(self.id),
+                    state: self.state,
+                    time: START_TIME.elapsed().into(),
+                },
+            )?;
         }
 
         Ok(())

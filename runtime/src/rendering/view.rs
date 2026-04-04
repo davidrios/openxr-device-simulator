@@ -22,15 +22,19 @@ pub extern "system" fn locate_views(
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 
-    if capacity_in != 2 {
+    unsafe { *count_out = 2 }
+
+    if capacity_in == 0 {
+        return xr::Result::SUCCESS;
+    }
+
+    if capacity_in < 2 {
         return xr::Result::ERROR_SIZE_INSUFFICIENT;
     }
 
     if views.is_null() {
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
-
-    unsafe { *count_out = 2 }
 
     log::debug!("locate_views {info:?}");
 
@@ -41,8 +45,23 @@ pub extern "system" fn locate_views(
 
         let view_state = unsafe { &mut *view_state };
         view_state.view_state_flags = xr::ViewStateFlags::from_raw(0b1111);
+
+        // IPD 64mm: left eye at -32mm, right eye at +32mm on X axis
+        let eye_x_offsets = [-0.032_f32, 0.032_f32];
         for i in 0..2 {
-            let _view = unsafe { &mut *(views.add(i)) };
+            let view = unsafe { &mut *(views.add(i)) };
+            view.ty = xr::StructureType::VIEW;
+            view.next = std::ptr::null_mut();
+            view.pose = xr::Posef {
+                orientation: xr::Quaternionf { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
+                position: xr::Vector3f { x: eye_x_offsets[i], y: 0.0, z: 0.0 },
+            };
+            view.fov = xr::Fovf {
+                angle_left: -std::f32::consts::FRAC_PI_4,
+                angle_right: std::f32::consts::FRAC_PI_4,
+                angle_up: std::f32::consts::FRAC_PI_4,
+                angle_down: -std::f32::consts::FRAC_PI_4,
+            };
         }
 
         Ok(())

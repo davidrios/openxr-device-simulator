@@ -1,7 +1,7 @@
 use std::{
     cell::UnsafeCell,
     collections::{HashMap, VecDeque},
-    sync::{LazyLock, Mutex, atomic},
+    sync::{Arc, LazyLock, Mutex, atomic},
 };
 
 use ash::vk::Handle;
@@ -206,7 +206,6 @@ pub extern "system" fn destroy(xr_obj: xr::Swapchain) -> xr::Result {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
 pub struct SimulatedSwapchain {
     session_id: u64,
     id: u64,
@@ -224,6 +223,30 @@ pub struct SimulatedSwapchain {
     acquired_images: VecDeque<usize>,
     waited_images: VecDeque<usize>,
     released_images: VecDeque<usize>,
+    to_read_images: VecDeque<usize>,
+    // Vulkan handles kept here so Drop and readback don't need to re-lock the session
+    device: Arc<ash::Device>,
+    queue: ash::vk::Queue,
+    queue_family_index: u32,
+    phys_mem_props: ash::vk::PhysicalDeviceMemoryProperties,
+}
+
+impl std::fmt::Debug for SimulatedSwapchain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SimulatedSwapchain")
+            .field("session_id", &self.session_id)
+            .field("id", &self.id)
+            .field("format", &self.format)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("images", &self.images)
+            .field("available_images", &self.available_images)
+            .field("acquired_images", &self.acquired_images)
+            .field("waited_images", &self.waited_images)
+            .field("released_images", &self.released_images)
+            .field("to_read_images", &self.to_read_images)
+            .finish()
+    }
 }
 
 impl SimulatedSwapchain {
@@ -238,6 +261,14 @@ impl SimulatedSwapchain {
 
         let format = ash::vk::Format::from_raw(create_info.format as i32);
 
+        let gb = &session.graphics_binding;
+        let device = gb.device.clone();
+        let queue = unsafe { gb.device.get_device_queue(gb.queue_family_index, gb.queue_index) };
+        let queue_family_index = gb.queue_family_index;
+        let phys_mem_props = unsafe {
+            gb.instance.get_physical_device_memory_properties(gb.physical_device)
+        };
+
         let num_images = if create_info
             .create_flags
             .contains(xr::SwapchainCreateFlags::STATIC_IMAGE)
@@ -250,7 +281,7 @@ impl SimulatedSwapchain {
         let mut available_images = VecDeque::with_capacity(num_images);
         let mut images = Vec::with_capacity(num_images);
         for i in 0..num_images {
-            images.push(OffscreenImage::new(&session.graphics_binding, create_info)?);
+            images.push(OffscreenImage::new(gb, create_info)?);
             available_images.push_back(i);
         }
 
@@ -271,6 +302,11 @@ impl SimulatedSwapchain {
             acquired_images: VecDeque::with_capacity(num_images),
             waited_images: VecDeque::with_capacity(num_images),
             released_images: VecDeque::with_capacity(num_images),
+            to_read_images: VecDeque::with_capacity(num_images),
+            device,
+            queue,
+            queue_family_index,
+            phys_mem_props,
         })
     }
 
@@ -317,21 +353,52 @@ impl SimulatedSwapchain {
             return Err(xr::Result::ERROR_CALL_ORDER_INVALID.into());
         };
 
-        self.available_images.push_back(index);
+        self.to_read_images.push_back(index);
 
         Ok(())
+    }
+
+    pub fn dump_frame(&mut self, frame_number: u64) {
+        let Some(index) = self.to_read_images.pop_front() else {
+            return;
+        };
+
+        let offscreen = &self.images[index];
+        if let Some(pixels) = offscreen.read_pixels(
+            &self.device,
+            &self.phys_mem_props,
+            self.queue,
+            self.queue_family_index,
+        ) {
+            let dir = std::path::Path::new("/tmp/openxr_frames");
+            if let Err(e) = std::fs::create_dir_all(dir) {
+                log::error!("failed to create output dir: {e}");
+            } else {
+                let path = dir.join(format!("frame_{frame_number:06}_sc{}.png", self.id));
+                let color_type = match self.format {
+                    ash::vk::Format::R8G8B8_UNORM
+                    | ash::vk::Format::R8G8B8_SNORM
+                    | ash::vk::Format::R8G8B8_UINT
+                    | ash::vk::Format::R8G8B8_SINT
+                    | ash::vk::Format::R8G8B8_SRGB => ::image::ColorType::Rgb8,
+                    _ => ::image::ColorType::Rgba8,
+                };
+                match ::image::save_buffer(&path, &pixels, self.width, self.height, color_type) {
+                    Ok(()) => log::info!("saved frame to {path:?}"),
+                    Err(e) => log::error!("failed to save frame: {e}"),
+                }
+            }
+        }
+
+        self.available_images.push_back(index);
     }
 }
 
 impl Drop for SimulatedSwapchain {
     fn drop(&mut self) {
-        with_session(self.session_id, |session| {
-            for image in self.images.iter() {
-                image.cleanup(session.graphics_binding.device.as_ref());
-            }
-            Ok(())
-        })
-        .ok();
+        for image in self.images.iter() {
+            image.cleanup(&self.device);
+        }
     }
 }
 
@@ -401,6 +468,195 @@ impl OffscreenImage {
         }
     }
 
+    /// Copy the GPU image to a host-visible staging buffer and return the raw pixel bytes.
+    pub fn read_pixels(
+        &self,
+        device: &ash::Device,
+        phys_mem_props: &ash::vk::PhysicalDeviceMemoryProperties,
+        queue: ash::vk::Queue,
+        queue_family_index: u32,
+    ) -> Option<Vec<u8>> {
+        let bytes_per_pixel: u64 = match self.format {
+            ash::vk::Format::R8G8B8_UNORM
+            | ash::vk::Format::R8G8B8_SNORM
+            | ash::vk::Format::R8G8B8_UINT
+            | ash::vk::Format::R8G8B8_SINT
+            | ash::vk::Format::R8G8B8_SRGB => 3,
+            ash::vk::Format::R8G8B8A8_UNORM
+            | ash::vk::Format::R8G8B8A8_SNORM
+            | ash::vk::Format::R8G8B8A8_UINT
+            | ash::vk::Format::R8G8B8A8_SINT
+            | ash::vk::Format::R8G8B8A8_SRGB => 4,
+            _ => {
+                log::error!("read_pixels: unsupported format {:?}", self.format);
+                return None;
+            }
+        };
+        let buffer_size = self.width as u64 * self.height as u64 * bytes_per_pixel;
+
+        unsafe {
+            // --- staging buffer ---
+            let buf_info = ash::vk::BufferCreateInfo {
+                size: buffer_size,
+                usage: ash::vk::BufferUsageFlags::TRANSFER_DST,
+                sharing_mode: ash::vk::SharingMode::EXCLUSIVE,
+                ..Default::default()
+            };
+            let staging_buf = device.create_buffer(&buf_info, None).ok()?;
+            let mem_req = device.get_buffer_memory_requirements(staging_buf);
+            let mem_type = find_memory_type_index(
+                &mem_req,
+                phys_mem_props,
+                ash::vk::MemoryPropertyFlags::HOST_VISIBLE
+                    | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
+            )?;
+            let staging_mem = device
+                .allocate_memory(
+                    &ash::vk::MemoryAllocateInfo {
+                        allocation_size: mem_req.size,
+                        memory_type_index: mem_type,
+                        ..Default::default()
+                    },
+                    None,
+                )
+                .ok()?;
+            device.bind_buffer_memory(staging_buf, staging_mem, 0).ok()?;
+
+            // --- one-shot command buffer ---
+            let cmd_pool = device
+                .create_command_pool(
+                    &ash::vk::CommandPoolCreateInfo {
+                        flags: ash::vk::CommandPoolCreateFlags::TRANSIENT,
+                        queue_family_index,
+                        ..Default::default()
+                    },
+                    None,
+                )
+                .ok()?;
+            let cmd = device
+                .allocate_command_buffers(&ash::vk::CommandBufferAllocateInfo {
+                    command_pool: cmd_pool,
+                    level: ash::vk::CommandBufferLevel::PRIMARY,
+                    command_buffer_count: 1,
+                    ..Default::default()
+                })
+                .ok()?[0];
+
+            device
+                .begin_command_buffer(
+                    cmd,
+                    &ash::vk::CommandBufferBeginInfo {
+                        flags: ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
+                        ..Default::default()
+                    },
+                )
+                .ok()?;
+
+            let subresource_range = ash::vk::ImageSubresourceRange {
+                aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            };
+
+            // COLOR_ATTACHMENT_OPTIMAL -> TRANSFER_SRC_OPTIMAL
+            device.cmd_pipeline_barrier(
+                cmd,
+                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                ash::vk::PipelineStageFlags::TRANSFER,
+                ash::vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[ash::vk::ImageMemoryBarrier {
+                    old_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    new_layout: ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    src_queue_family_index: ash::vk::QUEUE_FAMILY_IGNORED,
+                    dst_queue_family_index: ash::vk::QUEUE_FAMILY_IGNORED,
+                    image: self.image,
+                    subresource_range,
+                    src_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    dst_access_mask: ash::vk::AccessFlags::TRANSFER_READ,
+                    ..Default::default()
+                }],
+            );
+
+            device.cmd_copy_image_to_buffer(
+                cmd,
+                self.image,
+                ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                staging_buf,
+                &[ash::vk::BufferImageCopy {
+                    buffer_offset: 0,
+                    buffer_row_length: 0,
+                    buffer_image_height: 0,
+                    image_subresource: ash::vk::ImageSubresourceLayers {
+                        aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    image_offset: ash::vk::Offset3D::default(),
+                    image_extent: ash::vk::Extent3D {
+                        width: self.width,
+                        height: self.height,
+                        depth: 1,
+                    },
+                }],
+            );
+
+            // TRANSFER_SRC_OPTIMAL -> COLOR_ATTACHMENT_OPTIMAL (restore for next frame)
+            device.cmd_pipeline_barrier(
+                cmd,
+                ash::vk::PipelineStageFlags::TRANSFER,
+                ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                ash::vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[ash::vk::ImageMemoryBarrier {
+                    old_layout: ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    new_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    src_queue_family_index: ash::vk::QUEUE_FAMILY_IGNORED,
+                    dst_queue_family_index: ash::vk::QUEUE_FAMILY_IGNORED,
+                    image: self.image,
+                    subresource_range,
+                    src_access_mask: ash::vk::AccessFlags::TRANSFER_READ,
+                    dst_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    ..Default::default()
+                }],
+            );
+
+            device.end_command_buffer(cmd).ok()?;
+
+            device
+                .queue_submit(
+                    queue,
+                    &[ash::vk::SubmitInfo {
+                        command_buffer_count: 1,
+                        p_command_buffers: &cmd,
+                        ..Default::default()
+                    }],
+                    ash::vk::Fence::null(),
+                )
+                .ok()?;
+            device.queue_wait_idle(queue).ok()?;
+
+            // map and copy
+            let ptr = device
+                .map_memory(staging_mem, 0, buffer_size, ash::vk::MemoryMapFlags::empty())
+                .ok()? as *const u8;
+            let pixels = std::slice::from_raw_parts(ptr, buffer_size as usize).to_vec();
+            device.unmap_memory(staging_mem);
+
+            // cleanup
+            device.destroy_command_pool(cmd_pool, None);
+            device.free_memory(staging_mem, None);
+            device.destroy_buffer(staging_buf, None);
+
+            Some(pixels)
+        }
+    }
+
     pub fn new(
         graphics_binding: &GraphicsBinding,
         create_info: &xr::SwapchainCreateInfo,
@@ -414,7 +670,8 @@ impl OffscreenImage {
         };
 
         let (color_image, color_image_memory, color_image_view) = {
-            let mut usage = ash::vk::ImageUsageFlags::from_raw(0);
+            // Always include TRANSFER_SRC so we can read back rendered frames
+            let mut usage = ash::vk::ImageUsageFlags::TRANSFER_SRC;
             for (from, to) in USAGE_FLAGS_MAP {
                 if create_info
                     .usage_flags
@@ -497,6 +754,13 @@ impl OffscreenImage {
             image_view: color_image_view,
         })
     }
+}
+
+pub struct GpuImageCopy {
+    pub data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    pub format: ash::vk::Format,
 }
 
 static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);

@@ -190,7 +190,7 @@ impl SessionFrame {
         }
 
         // throttle to 2 fps
-        thread::sleep(Duration::from_millis(3000) - (START_TIME.elapsed() - start));
+        thread::sleep(Duration::from_millis(1000) - (START_TIME.elapsed() - start));
 
         frame_state.predicted_display_time =
             MyTime::from(START_TIME.elapsed() + Duration::from_millis(1)).into();

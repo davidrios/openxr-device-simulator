@@ -370,23 +370,38 @@ impl SimulatedSwapchain {
             self.queue,
             self.queue_family_index,
         ) {
-            let dir = std::path::Path::new("/tmp/openxr_frames");
-            if let Err(e) = std::fs::create_dir_all(dir) {
-                log::error!("failed to create output dir: {e}");
-            } else {
-                let path = dir.join(format!("frame_{frame_number:06}_sc{}.png", self.id));
-                let color_type = match self.format {
-                    ash::vk::Format::R8G8B8_UNORM
-                    | ash::vk::Format::R8G8B8_SNORM
-                    | ash::vk::Format::R8G8B8_UINT
-                    | ash::vk::Format::R8G8B8_SINT
-                    | ash::vk::Format::R8G8B8_SRGB => ::image::ColorType::Rgb8,
-                    _ => ::image::ColorType::Rgba8,
-                };
-                match ::image::save_buffer(&path, &pixels, self.width, self.height, color_type) {
-                    Ok(()) => log::info!("saved frame to {path:?}"),
-                    Err(e) => log::error!("failed to save frame: {e}"),
+            // JPEG doesn't support alpha — strip it for RGBA formats
+            let (rgb, color_type) = match self.format {
+                ash::vk::Format::R8G8B8_UNORM
+                | ash::vk::Format::R8G8B8_SNORM
+                | ash::vk::Format::R8G8B8_UINT
+                | ash::vk::Format::R8G8B8_SINT
+                | ash::vk::Format::R8G8B8_SRGB => {
+                    (pixels, ::image::ExtendedColorType::Rgb8)
                 }
+                _ => {
+                    let rgb: Vec<u8> = pixels
+                        .chunks_exact(4)
+                        .flat_map(|p| [p[0], p[1], p[2]])
+                        .collect();
+                    (rgb, ::image::ExtendedColorType::Rgb8)
+                }
+            };
+
+            let mut jpeg_bytes = Vec::new();
+            let mut enc = ::image::codecs::jpeg::JpegEncoder::new_with_quality(
+                std::io::Cursor::new(&mut jpeg_bytes),
+                80,
+            );
+            match enc.encode(&rgb, self.width, self.height, color_type) {
+                Ok(()) => {
+                    use base64::Engine as _;
+                    let jpeg_b64 =
+                        base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
+                    crate::server::send_frame(frame_number, self.id, jpeg_b64);
+                    log::debug!("sent frame {frame_number} sc{} ({} JPEG bytes)", self.id, jpeg_bytes.len());
+                }
+                Err(e) => log::error!("JPEG encode failed: {e}"),
             }
         }
 

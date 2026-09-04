@@ -198,13 +198,17 @@ async function requestPointerLock() {
   await document.documentElement.requestPointerLock();
 }
 
-// Swapchains are created in view order (view 0 = left eye, view 1 = right eye
-// per the OpenXR stereo view convention), so the lower id is the left eye.
+// Views are created/laid out in order (view 0 = left eye, view 1 = right eye
+// per the OpenXR stereo view convention) — whether that's two swapchains
+// (one per eye) or one array swapchain (one layer per eye), sorting frame
+// keys by (swapchain_id, layer) puts the left eye first either way.
 const eyeIds = computed(() => {
-  const ids = Object.keys(connection.frames)
-    .map(Number)
-    .sort((a, b) => a - b);
-  return { left: ids[0], right: ids[1] };
+  const keys = Object.keys(connection.frames).sort((a, b) => {
+    const [aSwapchain, aLayer] = a.split(':').map(Number);
+    const [bSwapchain, bLayer] = b.split(':').map(Number);
+    return aSwapchain! - bSwapchain! || aLayer! - bLayer!;
+  });
+  return { left: keys[0], right: keys[1] };
 });
 </script>
 

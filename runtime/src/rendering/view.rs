@@ -9,7 +9,9 @@ pub extern "system" fn locate_views(
     count_out: *mut u32,
     views: *mut xr::View,
 ) -> xr::Result {
-    if info.is_null() || view_state.is_null() || count_out.is_null() || views.is_null() {
+    // `views` is legitimately null on the standard two-call idiom: apps first
+    // query the count with capacity_in=0, then call again with a real buffer.
+    if info.is_null() || view_state.is_null() || count_out.is_null() {
         return xr::Result::ERROR_VALIDATION_FAILURE;
     }
 

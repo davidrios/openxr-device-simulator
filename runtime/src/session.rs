@@ -252,10 +252,10 @@ impl SimulatedSession {
 
     pub fn check_ready(&mut self) -> Result<()> {
         if let xr::SessionState::IDLE = self.state {
-            if !self.space_ids.is_empty()
-                && !self.swapchain_ids.is_empty()
-                && !self.action_set_ids.is_empty()
-            {
+            // Action sets are optional in OpenXR — an app with no input needs
+            // (e.g. HMD-only rendering) may never attach one, so gating
+            // readiness on it would leave such apps stuck at IDLE forever.
+            if !self.space_ids.is_empty() && !self.swapchain_ids.is_empty() {
                 self.state = xr::SessionState::READY;
                 schedule_event(
                     self.instance_id,

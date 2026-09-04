@@ -370,38 +370,49 @@ impl SimulatedSwapchain {
             self.queue,
             self.queue_family_index,
         ) {
-            // JPEG doesn't support alpha — strip it for RGBA formats
-            let (rgb, color_type) = match self.format {
-                ash::vk::Format::R8G8B8_UNORM
-                | ash::vk::Format::R8G8B8_SNORM
-                | ash::vk::Format::R8G8B8_UINT
-                | ash::vk::Format::R8G8B8_SINT
-                | ash::vk::Format::R8G8B8_SRGB => {
-                    (pixels, ::image::ExtendedColorType::Rgb8)
-                }
-                _ => {
-                    let rgb: Vec<u8> = pixels
-                        .chunks_exact(4)
-                        .flat_map(|p| [p[0], p[1], p[2]])
-                        .collect();
-                    (rgb, ::image::ExtendedColorType::Rgb8)
-                }
-            };
+            let bytes_per_pixel = pixels.len() / (offscreen.array_layers as usize * self.width as usize * self.height as usize);
+            let layer_size = self.width as usize * self.height as usize * bytes_per_pixel;
 
-            let mut jpeg_bytes = Vec::new();
-            let mut enc = ::image::codecs::jpeg::JpegEncoder::new_with_quality(
-                std::io::Cursor::new(&mut jpeg_bytes),
-                80,
-            );
-            match enc.encode(&rgb, self.width, self.height, color_type) {
-                Ok(()) => {
-                    use base64::Engine as _;
-                    let jpeg_b64 =
-                        base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
-                    crate::server::send_frame(frame_number, self.id, jpeg_b64);
-                    log::debug!("sent frame {frame_number} sc{} ({} JPEG bytes)", self.id, jpeg_bytes.len());
+            // Array-layer swapchains (e.g. multiview stereo rendering) pack every
+            // eye into one image, one layer each — encode and send them separately.
+            for (layer, layer_pixels) in pixels.chunks_exact(layer_size).enumerate() {
+                // JPEG doesn't support alpha — strip it for RGBA formats
+                let (rgb, color_type) = match self.format {
+                    ash::vk::Format::R8G8B8_UNORM
+                    | ash::vk::Format::R8G8B8_SNORM
+                    | ash::vk::Format::R8G8B8_UINT
+                    | ash::vk::Format::R8G8B8_SINT
+                    | ash::vk::Format::R8G8B8_SRGB => {
+                        (layer_pixels.to_vec(), ::image::ExtendedColorType::Rgb8)
+                    }
+                    _ => {
+                        let rgb: Vec<u8> = layer_pixels
+                            .chunks_exact(4)
+                            .flat_map(|p| [p[0], p[1], p[2]])
+                            .collect();
+                        (rgb, ::image::ExtendedColorType::Rgb8)
+                    }
+                };
+
+                let mut jpeg_bytes = Vec::new();
+                let mut enc = ::image::codecs::jpeg::JpegEncoder::new_with_quality(
+                    std::io::Cursor::new(&mut jpeg_bytes),
+                    80,
+                );
+                match enc.encode(&rgb, self.width, self.height, color_type) {
+                    Ok(()) => {
+                        use base64::Engine as _;
+                        let jpeg_b64 =
+                            base64::engine::general_purpose::STANDARD.encode(&jpeg_bytes);
+                        crate::server::send_frame(frame_number, self.id, layer as u32, jpeg_b64);
+                        log::debug!(
+                            "sent frame {frame_number} sc{} layer{layer} ({} JPEG bytes)",
+                            self.id,
+                            jpeg_bytes.len()
+                        );
+                    }
+                    Err(e) => log::error!("JPEG encode failed: {e}"),
                 }
-                Err(e) => log::error!("JPEG encode failed: {e}"),
             }
         }
 
@@ -469,6 +480,7 @@ pub struct OffscreenImage {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) format: ash::vk::Format,
+    pub(crate) array_layers: u32,
     pub(crate) image: ash::vk::Image,
     pub(crate) image_memory: ash::vk::DeviceMemory,
     pub(crate) image_view: ash::vk::ImageView,
@@ -507,7 +519,8 @@ impl OffscreenImage {
                 return None;
             }
         };
-        let buffer_size = self.width as u64 * self.height as u64 * bytes_per_pixel;
+        let buffer_size =
+            self.width as u64 * self.height as u64 * bytes_per_pixel * self.array_layers as u64;
 
         unsafe {
             // --- staging buffer ---
@@ -684,7 +697,7 @@ impl OffscreenImage {
                 .get_physical_device_memory_properties(graphics_binding.physical_device)
         };
 
-        let (color_image, color_image_memory, color_image_view) = {
+        let (color_image, color_image_memory, color_image_view, color_image_array_layers) = {
             // Always include TRANSFER_SRC so we can read back rendered frames
             let mut usage = ash::vk::ImageUsageFlags::TRANSFER_SRC;
             for (from, to) in USAGE_FLAGS_MAP {
@@ -696,6 +709,8 @@ impl OffscreenImage {
                 }
             }
 
+            let array_layers = create_info.array_size.max(1);
+
             let image_create_info = ash::vk::ImageCreateInfo {
                 image_type: ash::vk::ImageType::TYPE_2D,
                 format,
@@ -705,7 +720,7 @@ impl OffscreenImage {
                     depth: 1,
                 },
                 mip_levels: create_info.mip_count,
-                array_layers: 1,
+                array_layers,
                 samples: ash::vk::SampleCountFlags::TYPE_1,
                 usage,
                 ..Default::default()
@@ -740,14 +755,18 @@ impl OffscreenImage {
 
             let view_create_info = ash::vk::ImageViewCreateInfo {
                 image,
-                view_type: ash::vk::ImageViewType::TYPE_2D,
+                view_type: if array_layers > 1 {
+                    ash::vk::ImageViewType::TYPE_2D_ARRAY
+                } else {
+                    ash::vk::ImageViewType::TYPE_2D
+                },
                 format,
                 subresource_range: ash::vk::ImageSubresourceRange {
                     aspect_mask: ash::vk::ImageAspectFlags::COLOR,
                     base_mip_level: 0,
                     level_count: 1,
                     base_array_layer: 0,
-                    layer_count: 1,
+                    layer_count: array_layers,
                 },
                 ..Default::default()
             };
@@ -757,13 +776,14 @@ impl OffscreenImage {
                     .device
                     .create_image_view(&view_create_info, None)?
             };
-            (image, memory, view)
+            (image, memory, view, array_layers)
         };
 
         Ok(Self {
             width: create_info.width,
             height: create_info.height,
             format,
+            array_layers: color_image_array_layers,
             image: color_image,
             image_memory: color_image_memory,
             image_view: color_image_view,

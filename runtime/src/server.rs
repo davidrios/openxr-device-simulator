@@ -101,13 +101,14 @@ static CLIENT_S: Mutex<Option<crossbeam_channel::Sender<ClientMessage>>> = Mutex
 static CLIENT_R: Mutex<Option<crossbeam_channel::Receiver<ClientMessage>>> = Mutex::new(None);
 
 pub enum ClientMessage {
-    Frame { number: u64, swapchain_id: u64, jpeg_b64: String },
+    Frame { number: u64, swapchain_id: u64, layer: u32, jpeg_b64: String },
 }
 
 #[derive(serde::Serialize)]
 struct FramePayload<'a> {
     number: u64,
     swapchain_id: u64,
+    layer: u32,
     jpeg_b64: &'a str,
 }
 
@@ -115,13 +116,15 @@ pub enum ServerMessage {
     Ping,
 }
 
-pub fn send_frame(number: u64, swapchain_id: u64, jpeg_b64: String) {
+pub fn send_frame(number: u64, swapchain_id: u64, layer: u32, jpeg_b64: String) {
     let lock = CLIENT_S.lock().unwrap();
     let Some(client_s) = lock.as_ref() else {
         return;
     };
 
-    if let Err(err) = client_s.try_send(ClientMessage::Frame { number, swapchain_id, jpeg_b64 }) {
+    if let Err(err) =
+        client_s.try_send(ClientMessage::Frame { number, swapchain_id, layer, jpeg_b64 })
+    {
         match err {
             crossbeam_channel::TrySendError::Full(_) => {}
             crossbeam_channel::TrySendError::Disconnected(_) => {
@@ -231,10 +234,11 @@ pub fn start() {
                         if let Some(client_r) = CLIENT_R.lock().unwrap().as_ref() {
                             let res = match client_r.try_recv() {
                                 Ok(msg) => match msg {
-                                    ClientMessage::Frame { number, swapchain_id, jpeg_b64 } =>
+                                    ClientMessage::Frame { number, swapchain_id, layer, jpeg_b64 } =>
                                         socket.emit("frame", &FramePayload {
                                             number,
                                             swapchain_id,
+                                            layer,
                                             jpeg_b64: &jpeg_b64,
                                         }),
                                 },

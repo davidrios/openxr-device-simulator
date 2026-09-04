@@ -46,7 +46,10 @@ interface ConnectionStore {
   isConnecting: boolean;
   address: string | null;
   socket: Socket | null;
-  frames: Record<number, string>;
+  // Keyed by "<swapchain_id>:<layer>" — a swapchain can be a plain 2D image
+  // (layer always 0, one swapchain per eye) or an array image with one layer
+  // per eye (one swapchain, layer 0/1), so both need to be told apart.
+  frames: Record<string, string>;
 }
 
 export const useConnection = defineStore('connection', {
@@ -104,8 +107,9 @@ export const useConnection = defineStore('connection', {
 
         this.socket.on(
           'frame',
-          (data: { number: number; swapchain_id: number; jpeg_b64: string }) => {
-            this.frames[data.swapchain_id] = `data:image/jpeg;base64,${data.jpeg_b64}`;
+          (data: { number: number; swapchain_id: number; layer: number; jpeg_b64: string }) => {
+            this.frames[`${data.swapchain_id}:${data.layer}`] =
+              `data:image/jpeg;base64,${data.jpeg_b64}`;
           },
         );
       });

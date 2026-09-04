@@ -1,4 +1,4 @@
-use std::sync::{LazyLock, Mutex, atomic};
+use std::sync::{Mutex, atomic};
 use std::time::Duration;
 
 use axum::{http, routing};
@@ -11,18 +11,50 @@ use tower_http::cors;
 
 static IS_CONNECTED: atomic::AtomicBool = atomic::AtomicBool::new(false);
 
-/// Current head look direction (yaw, pitch) in radians, updated directly by the Socket.IO thread.
-static HEAD_LOOK: LazyLock<Mutex<(f32, f32)>> = LazyLock::new(|| Mutex::new((0.0, 0.0)));
-
-pub fn get_head_look() -> (f32, f32) {
-    *HEAD_LOOK.lock().unwrap()
+#[derive(serde::Deserialize)]
+struct Vec3Data {
+    x: f32,
+    y: f32,
+    z: f32,
 }
 
 #[derive(serde::Deserialize)]
-struct LookData {
-    yaw: f32,
-    pitch: f32,
+struct QuatData {
+    x: f32,
+    y: f32,
+    z: f32,
+    w: f32,
 }
+
+#[derive(serde::Deserialize)]
+struct PoseData {
+    position: Vec3Data,
+    orientation: QuatData,
+}
+
+#[derive(serde::Deserialize)]
+struct InputData {
+    head: PoseData,
+}
+
+impl From<PoseData> for xr::Posef {
+    fn from(value: PoseData) -> Self {
+        xr::Posef {
+            orientation: xr::Quaternionf {
+                x: value.orientation.x,
+                y: value.orientation.y,
+                z: value.orientation.z,
+                w: value.orientation.w,
+            },
+            position: xr::Vector3f {
+                x: value.position.x,
+                y: value.position.y,
+                z: value.position.z,
+            },
+        }
+    }
+}
+
 static SERVER_S: Mutex<Option<crossbeam_channel::Sender<ServerMessage>>> = Mutex::new(None);
 static SERVER_R: Mutex<Option<crossbeam_channel::Receiver<ServerMessage>>> = Mutex::new(None);
 static CLIENT_S: Mutex<Option<crossbeam_channel::Sender<ClientMessage>>> = Mutex::new(None);
@@ -141,8 +173,8 @@ pub fn start() {
                     },
                 );
 
-                socket.on("look", async |Data::<LookData>(data)| {
-                    *HEAD_LOOK.lock().unwrap() = (data.yaw, data.pitch);
+                socket.on("input", async |Data::<InputData>(data)| {
+                    crate::input::device_state::set_head_pose(data.head.into());
                 });
 
                 std::thread::spawn(move || {

@@ -131,3 +131,41 @@ pub fn create_identity_pose() -> xr::Posef {
         },
     }
 }
+
+/// Rotate a vector from a local frame into its parent frame: v' = q v q*
+pub fn rotate_vec3(q: &xr::Quaternionf, v: xr::Vector3f) -> xr::Vector3f {
+    let tx = 2.0 * (q.y * v.z - q.z * v.y);
+    let ty = 2.0 * (q.z * v.x - q.x * v.z);
+    let tz = 2.0 * (q.x * v.y - q.y * v.x);
+    xr::Vector3f {
+        x: v.x + q.w * tx + q.y * tz - q.z * ty,
+        y: v.y + q.w * ty + q.z * tx - q.x * tz,
+        z: v.z + q.w * tz + q.x * ty - q.y * tx,
+    }
+}
+
+/// Hamilton product a * b: the rotation that applies b first, then a.
+pub fn mul_quat(a: &xr::Quaternionf, b: &xr::Quaternionf) -> xr::Quaternionf {
+    xr::Quaternionf {
+        w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+        x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+    }
+}
+
+/// Compose a pose expressed in `parent`'s local frame with `parent` itself,
+/// giving the pose in `parent`'s parent frame.
+pub fn compose_poses(parent: xr::Posef, local: xr::Posef) -> xr::Posef {
+    xr::Posef {
+        orientation: mul_quat(&parent.orientation, &local.orientation),
+        position: {
+            let offset = rotate_vec3(&parent.orientation, local.position);
+            xr::Vector3f {
+                x: parent.position.x + offset.x,
+                y: parent.position.y + offset.y,
+                z: parent.position.z + offset.z,
+            }
+        },
+    }
+}

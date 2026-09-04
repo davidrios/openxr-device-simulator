@@ -12,7 +12,13 @@ const connection = useConnection();
 const isLocked = ref(false);
 let yaw = 0;
 let pitch = 0;
+const position = { x: 0, y: 0, z: 0 };
 const SENSITIVITY = 0.002;
+const MOVE_SPEED = 1.5; // meters per second
+
+const keysDown = new Set<string>();
+let animationFrame = 0;
+let lastFrameTime = 0;
 
 watch(
   () => connection.isConnected,
@@ -32,12 +38,19 @@ onMounted(async () => {
   }
   document.addEventListener('pointerlockchange', onPointerLockChange);
   document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('keydown', onKeyDown);
+  document.addEventListener('keyup', onKeyUp);
+  lastFrameTime = performance.now();
+  animationFrame = requestAnimationFrame(onFrame);
 });
 
 onUnmounted(() => {
   document.removeEventListener('pointerlockchange', onPointerLockChange);
   document.removeEventListener('mousemove', onMouseMove);
+  document.removeEventListener('keydown', onKeyDown);
+  document.removeEventListener('keyup', onKeyUp);
   if (document.pointerLockElement) document.exitPointerLock();
+  cancelAnimationFrame(animationFrame);
 });
 
 function onPointerLockChange() {
@@ -49,7 +62,70 @@ function onMouseMove(e: MouseEvent) {
   yaw -= e.movementX * SENSITIVITY;
   pitch -= e.movementY * SENSITIVITY;
   pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, pitch));
-  connection.sendLook(yaw, pitch);
+}
+
+function onKeyDown(e: KeyboardEvent) {
+  keysDown.add(e.code);
+}
+
+function onKeyUp(e: KeyboardEvent) {
+  keysDown.delete(e.code);
+}
+
+function onFrame(time: number) {
+  const dt = (time - lastFrameTime) / 1000;
+  lastFrameTime = time;
+
+  // Forward/right vectors on the horizontal plane, from yaw only (ignore pitch).
+  const forward = { x: -Math.sin(yaw), z: -Math.cos(yaw) };
+  const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+
+  let moveX = 0;
+  let moveZ = 0;
+  let moveY = 0;
+  if (keysDown.has('KeyW')) {
+    moveX += forward.x;
+    moveZ += forward.z;
+  }
+  if (keysDown.has('KeyS')) {
+    moveX -= forward.x;
+    moveZ -= forward.z;
+  }
+  if (keysDown.has('KeyD')) {
+    moveX += right.x;
+    moveZ += right.z;
+  }
+  if (keysDown.has('KeyA')) {
+    moveX -= right.x;
+    moveZ -= right.z;
+  }
+  if (keysDown.has('Space')) moveY += 1;
+  if (keysDown.has('ShiftLeft')) moveY -= 1;
+
+  const moveLen = Math.hypot(moveX, moveZ);
+  if (moveLen > 0) {
+    position.x += (moveX / moveLen) * MOVE_SPEED * dt;
+    position.z += (moveZ / moveLen) * MOVE_SPEED * dt;
+  }
+  position.y += moveY * MOVE_SPEED * dt;
+
+  // q = q_yaw (Y-axis) * q_pitch (X-axis)
+  const sy = Math.sin(yaw * 0.5);
+  const cy = Math.cos(yaw * 0.5);
+  const sp = Math.sin(pitch * 0.5);
+  const cp = Math.cos(pitch * 0.5);
+
+  connection.sendInput({
+    position: { x: position.x, y: position.y, z: position.z },
+    orientation: {
+      x: cy * sp,
+      y: sy * cp,
+      z: -sy * sp,
+      w: cy * cp,
+    },
+  });
+
+  animationFrame = requestAnimationFrame(onFrame);
 }
 
 async function requestPointerLock() {
@@ -60,7 +136,8 @@ async function requestPointerLock() {
 <template>
   <q-page class="column items-center q-gutter-md q-pa-md" @click="requestPointerLock">
     <div v-if="!isLocked" class="text-caption text-grey">
-      Click anywhere to capture mouse — move to look around
+      Click anywhere to capture mouse — move to look around, WASD to move, Space/Shift for
+      up/down
     </div>
     <div v-else class="text-caption text-grey">Press Esc to release mouse</div>
     <div class="row q-gutter-md">

@@ -48,6 +48,7 @@ pub extern "system" fn create(
         let space_id = super::create(
             session,
             super::SimulatedSpaceType::Reference(SimulatedReferenceSpace {
+                reference_space_type: create_info.reference_space_type,
                 pose: create_info.pose_in_reference_space,
             }),
         )?;
@@ -81,5 +82,6 @@ pub extern "system" fn get_bounds_rect(
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct SimulatedReferenceSpace {
+    pub(crate) reference_space_type: xr::ReferenceSpaceType,
     pub(crate) pose: xr::Posef,
 }

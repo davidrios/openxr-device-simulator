@@ -1,6 +1,24 @@
 import { defineStore, acceptHMRUpdate } from 'pinia';
 import { io, type Socket } from 'socket.io-client';
 
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface Quat {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
+
+export interface HeadInput {
+  position: Vec3;
+  orientation: Quat;
+}
+
 interface ConnectionStore {
   isConnected: boolean;
   isConnecting: boolean;
@@ -75,8 +93,8 @@ export const useConnection = defineStore('connection', {
       this.socket?.emit('message', 'test msg');
     },
 
-    sendLook(yaw: number, pitch: number) {
-      this.socket?.emit('look', { yaw, pitch });
+    sendInput(head: HeadInput) {
+      this.socket?.emit('input', { head });
     },
   },
 });

@@ -94,9 +94,14 @@ The `< <(sleep infinity)` is required in non-interactive shells: `hello_xr` spaw
 
 **`bevy_oxr`** (a real game engine, more demanding than `hello_xr`) is at `/mnt/shared/work/bevy_oxr`. That path is an **NTFS mount** — the Linux `ntfs3` driver can't reliably read large files there (even `cp` fails with `Invalid argument`, not just exec), so build with `CARGO_TARGET_DIR` pointing somewhere native (e.g. `/tmp/...`) rather than trying to run prebuilt binaries from `target/` in place. `crates/bevy_openxr` (package `bevy_mod_openxr`) has runnable examples, e.g. `3d_scene`.
 
+**`godot-xr-template`** (a real Godot game — https://github.com/godotVR/godot-xr-template, needs Godot 4.6+) exercises the runtime differently from the above two and has driven most of the input/session-lifecycle bugfixes: it creates action sets before any session exists, creates a "probe" session before the real one, waits for `READY` before ever creating a swapchain, hard-requires a usable depth swapchain format to initialize at all, and won't poll any non-pose action state until `xrGetCurrentInteractionProfile` succeeds. A Godot binary isn't checked into this repo; download one (e.g. from godotengine.org) and import the project once (`godot --headless --import --path <project>`) before running it for real. It defaults to the `gl_compatibility` (OpenGL) rendering method, which needs `XR_KHR_opengl_enable` — this runtime is Vulkan-only, so force Vulkan without touching the project file:
+```bash
+XR_RUNTIME_JSON=/home/david/work/openxr-device-simulator/runtime_json/linux_debug.json \
+  godot --path <path-to-godot-xr-template> --rendering-method forward_plus --rendering-driver vulkan
+```
+
 Set `RUST_LOG=debug` (or `info,openxr_device_simulator_runtime=debug`) to see the runtime's own logging.
 
 ## Known gaps
 
 - Controller position is keyboard-driven (X/Y plane) via the web client, not real 6DoF — real gamepad/gyro support (PS5 DualSense / Switch Joy-Con via Gamepad API + WebHID) is planned but not implemented.
-- The default head pose (`device_state.rs`'s `DeviceState::default()`) starts at literal world origin `(0,0,0)` — floor level, not a standing eye height. A scene with geometry near the origin (e.g. `bevy_oxr`'s `3d_scene` example, cube centered at `y=0.5`) will render as solid black until the user moves the viewpoint up/back via WASD/Space in the web client, since the camera starts at floor level coincident with the scene's floor plane and inside the cube's bounds. Not a runtime bug — confirmed by moving the viewpoint, the scene (cube, floor, shadows, lighting) renders correctly. Worth considering a more realistic default standing height (~1.6m) so apps look reasonable before the user moves.

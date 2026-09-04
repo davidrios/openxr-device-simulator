@@ -20,3 +20,19 @@ winit = "0.30.12"
 ash = "0.38.0"
 vulkano = "0.35.2"
 vulkano-shaders = "0.35.0"
+
+# Dev builds default to opt-level=0, which makes the per-frame JPEG encode +
+# pixel readback (runtime/src/rendering/swapchain.rs) slow enough to dominate
+# frame time. Lightly optimize our own code and fully optimize the crates
+# doing the heavy lifting, without switching to a full release build.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.base64]
+opt-level = 3

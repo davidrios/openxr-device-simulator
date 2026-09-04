@@ -77,7 +77,11 @@ const SIZEOF_TY_NEXT: usize = std::mem::size_of::<xr::EventDataBaseHeader>();
 
 pub fn schedule_event(queue_id: u64, event: &Event) -> Result<()> {
     with_event_queue(queue_id, |queue| {
-        let (ptr, size) = match event {
+        // The byte-copy out of `xr_event` must happen before it goes out of
+        // scope: a raw pointer carries no lifetime, so the borrow checker
+        // can't catch a copy done after the fact, and the source bytes are
+        // liable to be clobbered by the time an optimizing build gets to it.
+        let (ty, buf) = match event {
             Event::SessionStateChanged {
                 session,
                 state,
@@ -93,20 +97,14 @@ pub fn schedule_event(queue_id: u64, event: &Event) -> Result<()> {
                 };
                 let size = std::mem::size_of::<xr::EventDataSessionStateChanged>();
                 let ptr = &xr_event as *const _ as *const u8;
-                (ptr, size)
+                let slice: &[u8] = unsafe {
+                    std::slice::from_raw_parts(ptr.add(SIZEOF_TY_NEXT), size - SIZEOF_TY_NEXT)
+                };
+                (ty, slice.to_vec().into_boxed_slice())
             }
         };
 
-        let slice: &[u8] =
-            unsafe { std::slice::from_raw_parts(ptr.add(SIZEOF_TY_NEXT), size - SIZEOF_TY_NEXT) };
-
-        let mut buf = vec![0_u8; size - SIZEOF_TY_NEXT];
-        buf.copy_from_slice(slice);
-
-        queue.push_back(QueueItem {
-            ty: unsafe { *(ptr as *const xr::StructureType) },
-            buf: buf.into_boxed_slice(),
-        });
+        queue.push_back(QueueItem { ty, buf });
         Ok(())
     })
 }

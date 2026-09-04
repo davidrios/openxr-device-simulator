@@ -29,6 +29,10 @@ function updateAvailableHeight() {
   availableHeight.value = window.innerHeight - (header?.clientHeight ?? 0);
 }
 
+// Bigger previews are harder to cross-eye-fuse into 3D, so let it be tuned down.
+const previewScale = ref(Number(localStorage.getItem('previewScale')) || 0.6);
+watch(previewScale, (value) => localStorage.setItem('previewScale', String(value)));
+
 // Matches the resting controller pose in runtime/src/input/device_state.rs.
 // Real 6DoF (gyro + arm model) comes later; for keyboard testing the thumbstick
 // just pushes the hand around in the X/Y plane so movement is visible.
@@ -218,6 +222,17 @@ const eyeIds = computed(() => {
       <span v-if="eyeIds.left !== undefined" class="text-caption text-grey q-mr-sm">
         Cross your eyes for 3D
       </span>
+      <q-icon name="photo_size_select_large" size="16px" class="text-grey q-mr-xs" />
+      <q-slider
+        v-model="previewScale"
+        :min="0.2"
+        :max="1"
+        :step="0.05"
+        dense
+        style="width: 100px"
+        class="q-mr-sm"
+        @click.stop
+      />
       <q-icon name="help_outline" size="18px" class="text-grey cursor-help">
         <q-tooltip>
           Left: IJKL stick, R squeeze, F trigger, 1/2/3/4 = A/B/stick-click/menu<br />
@@ -225,20 +240,22 @@ const eyeIds = computed(() => {
         </q-tooltip>
       </q-icon>
     </div>
-    <div
-      class="col row justify-center items-center no-wrap"
-      style="min-height: 0; gap: 8px"
-    >
-      <img
-        v-if="eyeIds.right !== undefined"
-        :src="connection.frames[eyeIds.right]"
-        style="max-width: calc(50% - 4px); max-height: 100%; image-rendering: pixelated"
-      />
-      <img
-        v-if="eyeIds.left !== undefined"
-        :src="connection.frames[eyeIds.left]"
-        style="max-width: calc(50% - 4px); max-height: 100%; image-rendering: pixelated"
-      />
+    <div class="col row justify-center items-center no-wrap" style="min-height: 0">
+      <div
+        class="row justify-center items-center no-wrap"
+        :style="{ width: previewScale * 100 + '%', height: previewScale * 100 + '%', gap: '8px' }"
+      >
+        <img
+          v-if="eyeIds.right !== undefined"
+          :src="connection.frames[eyeIds.right]"
+          style="max-width: calc(50% - 4px); max-height: 100%; image-rendering: pixelated"
+        />
+        <img
+          v-if="eyeIds.left !== undefined"
+          :src="connection.frames[eyeIds.left]"
+          style="max-width: calc(50% - 4px); max-height: 100%; image-rendering: pixelated"
+        />
+      </div>
     </div>
     <div class="row justify-center q-py-xs" style="flex: 0 0 auto">
       <q-btn dense size="sm" @click.stop="connection.ping()">Ping</q-btn>

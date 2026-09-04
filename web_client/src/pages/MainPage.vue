@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useConnection } from 'src/stores/connection';
@@ -20,10 +20,13 @@ const keysDown = new Set<string>();
 let animationFrame = 0;
 let lastFrameTime = 0;
 
-// Matches the resting controller pose in runtime/src/input/device_state.rs —
-// controller position isn't driven by keyboard/mouse yet (see gamepad/gyro phase).
-const LEFT_HAND_POSE = { position: { x: -0.3, y: -0.3, z: -0.5 }, orientation: { x: 0, y: 0, z: 0, w: 1 } };
-const RIGHT_HAND_POSE = { position: { x: 0.3, y: -0.3, z: -0.5 }, orientation: { x: 0, y: 0, z: 0, w: 1 } };
+// Matches the resting controller pose in runtime/src/input/device_state.rs.
+// Real 6DoF (gyro + arm model) comes later; for keyboard testing the thumbstick
+// just pushes the hand around in the X/Y plane so movement is visible.
+const IDENTITY_ORIENTATION = { x: 0, y: 0, z: 0, w: 1 };
+const leftHandPos = { x: -0.3, y: -0.3, z: -0.5 };
+const rightHandPos = { x: 0.3, y: -0.3, z: -0.5 };
+const HAND_MOVE_SPEED = 0.5; // meters per second
 
 function stickAxis(negKey: string, posKey: string): number {
   let v = 0;
@@ -121,6 +124,13 @@ function onFrame(time: number) {
   }
   position.y += moveY * MOVE_SPEED * dt;
 
+  const leftStick = { x: stickAxis('KeyJ', 'KeyL'), y: stickAxis('KeyK', 'KeyI') };
+  const rightStick = { x: stickAxis('ArrowLeft', 'ArrowRight'), y: stickAxis('ArrowDown', 'ArrowUp') };
+  leftHandPos.x += leftStick.x * HAND_MOVE_SPEED * dt;
+  leftHandPos.y += leftStick.y * HAND_MOVE_SPEED * dt;
+  rightHandPos.x += rightStick.x * HAND_MOVE_SPEED * dt;
+  rightHandPos.y += rightStick.y * HAND_MOVE_SPEED * dt;
+
   // q = q_yaw (Y-axis) * q_pitch (X-axis)
   const sy = Math.sin(yaw * 0.5);
   const cy = Math.cos(yaw * 0.5);
@@ -138,12 +148,12 @@ function onFrame(time: number) {
       },
     },
     leftHand: {
-      pose: LEFT_HAND_POSE,
+      pose: { position: { ...leftHandPos }, orientation: IDENTITY_ORIENTATION },
       buttons: {
         trigger: keysDown.has('KeyF') ? 1 : 0,
         squeeze: keysDown.has('KeyR') ? 1 : 0,
-        thumbstick_x: stickAxis('KeyJ', 'KeyL'),
-        thumbstick_y: stickAxis('KeyK', 'KeyI'),
+        thumbstick_x: leftStick.x,
+        thumbstick_y: leftStick.y,
         thumbstick_click: keysDown.has('Digit3'),
         primary_click: keysDown.has('Digit1'),
         secondary_click: keysDown.has('Digit2'),
@@ -151,12 +161,12 @@ function onFrame(time: number) {
       },
     },
     rightHand: {
-      pose: RIGHT_HAND_POSE,
+      pose: { position: { ...rightHandPos }, orientation: IDENTITY_ORIENTATION },
       buttons: {
         trigger: keysDown.has('ShiftRight') ? 1 : 0,
         squeeze: keysDown.has('ControlRight') ? 1 : 0,
-        thumbstick_x: stickAxis('ArrowLeft', 'ArrowRight'),
-        thumbstick_y: stickAxis('ArrowDown', 'ArrowUp'),
+        thumbstick_x: rightStick.x,
+        thumbstick_y: rightStick.y,
         thumbstick_click: keysDown.has('Digit9'),
         primary_click: keysDown.has('Digit7'),
         secondary_click: keysDown.has('Digit8'),
@@ -171,6 +181,15 @@ function onFrame(time: number) {
 async function requestPointerLock() {
   await document.documentElement.requestPointerLock();
 }
+
+// Swapchains are created in view order (view 0 = left eye, view 1 = right eye
+// per the OpenXR stereo view convention), so the lower id is the left eye.
+const eyeIds = computed(() => {
+  const ids = Object.keys(connection.frames)
+    .map(Number)
+    .sort((a, b) => a - b);
+  return { left: ids[0], right: ids[1] };
+});
 </script>
 
 <template>
@@ -184,10 +203,17 @@ async function requestPointerLock() {
       Left controller: IJKL stick, R squeeze, F trigger, 1/2/3/4 = A/B/stick-click/menu &nbsp;·&nbsp;
       Right controller: arrow keys stick, RCtrl squeeze, RShift trigger, 7/8/9/0 = A/B/stick-click/menu
     </div>
-    <div class="row q-gutter-md">
-      <div v-for="(src, id) in connection.frames" :key="id" class="column items-center">
-        <div class="text-caption">Swapchain {{ id }}</div>
-        <img :src="src" style="max-width: 512px; image-rendering: pixelated" />
+    <div v-if="eyeIds.left !== undefined && eyeIds.right !== undefined" class="column items-center">
+      <div class="text-caption text-grey">Cross-eyed view — cross your eyes to fuse the pair into 3D</div>
+      <div class="row q-gutter-sm">
+        <img
+          :src="connection.frames[eyeIds.right]"
+          style="width: 360px; image-rendering: pixelated"
+        />
+        <img
+          :src="connection.frames[eyeIds.left]"
+          style="width: 360px; image-rendering: pixelated"
+        />
       </div>
     </div>
     <q-btn @click.stop="connection.ping()">Ping</q-btn>

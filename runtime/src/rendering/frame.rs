@@ -189,8 +189,8 @@ impl SessionFrame {
             }
         }
 
-        // throttle fps
-        thread::sleep(Duration::from_millis(500).saturating_sub(START_TIME.elapsed() - start));
+        // throttle to the same ~60Hz cadence advertised via predicted_display_period below
+        thread::sleep(Duration::from_millis(16).saturating_sub(START_TIME.elapsed() - start));
 
         frame_state.predicted_display_time =
             MyTime::from(START_TIME.elapsed() + Duration::from_millis(1)).into();

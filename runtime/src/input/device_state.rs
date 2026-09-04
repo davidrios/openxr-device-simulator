@@ -37,8 +37,17 @@ impl HandState {
     fn resting(x: f32) -> Self {
         Self {
             controller_pose: xr::Posef {
-                orientation: xr::Quaternionf { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
-                position: xr::Vector3f { x, y: DEFAULT_STANDING_HEIGHT - 0.30, z: -0.5 },
+                orientation: xr::Quaternionf {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    w: 1.0,
+                },
+                position: xr::Vector3f {
+                    x,
+                    y: DEFAULT_STANDING_HEIGHT - 0.30,
+                    z: -0.5,
+                },
             },
             buttons: ControllerButtons::default(),
         }
@@ -57,7 +66,11 @@ impl Default for DeviceState {
     fn default() -> Self {
         Self {
             head: xr::Posef {
-                position: xr::Vector3f { x: 0.0, y: DEFAULT_STANDING_HEIGHT, z: 0.0 },
+                position: xr::Vector3f {
+                    x: 0.0,
+                    y: DEFAULT_STANDING_HEIGHT,
+                    z: 0.0,
+                },
                 ..create_identity_pose()
             },
             // Matches the resting wrist positions used by hand_tracking.rs.

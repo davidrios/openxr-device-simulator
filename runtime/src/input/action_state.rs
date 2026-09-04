@@ -10,8 +10,10 @@ use crate::{
 };
 
 /// The interaction profile we prefer to resolve bindings against when an app
-/// suggests several (see `sync_one_action`).
-const TARGET_INTERACTION_PROFILE: &str = "/interaction_profiles/oculus/touch_controller";
+/// suggests several (see `sync_one_action`), and the only one we ever report
+/// as "current" via `xrGetCurrentInteractionProfile` (see
+/// `interaction_profile::get_current`).
+pub(crate) const TARGET_INTERACTION_PROFILE: &str = "/interaction_profiles/oculus/touch_controller";
 
 fn check_path_is_valid(instance_id: u64, path_id: u64) -> Result<()> {
     if path_id == 0 {
@@ -191,9 +193,10 @@ pub extern "system" fn sync_actions(
         let device_state = crate::input::device_state::get_device_state();
 
         for active_action_set in active_action_sets {
-            let action_ids: Vec<u64> = with_action_set(active_action_set.action_set.into_raw(), |set| {
-                Ok(set.actions().to_vec())
-            })?;
+            let action_ids: Vec<u64> =
+                with_action_set(active_action_set.action_set.into_raw(), |set| {
+                    Ok(set.actions().to_vec())
+                })?;
             for action_id in action_ids {
                 sync_one_action(instance_id, action_id, &device_state)?;
             }
@@ -213,10 +216,22 @@ fn resolve_value(
 ) -> Option<SimulatedActionValue> {
     use SimulatedActionValue::*;
     match (current, suffix) {
-        (Boolean(_), "/input/trigger/click" | "/input/select/click") => {
-            Some(Boolean(hand.buttons.trigger > 0.5))
+        // Per the OpenXR spec, a Boolean action bound to a float input path
+        // is a valid, automatic conversion (true above a ~0.5 threshold) —
+        // not every controller profile has a dedicated .../click path for
+        // every button (Oculus Touch's trigger is analog-only, for
+        // instance), so apps routinely bind boolean actions straight to
+        // .../value instead.
+        (
+            Boolean(_),
+            "/input/trigger/click"
+            | "/input/select/click"
+            | "/input/trigger/value"
+            | "/input/select/value",
+        ) => Some(Boolean(hand.buttons.trigger > 0.5)),
+        (Boolean(_), "/input/squeeze/click" | "/input/squeeze/value" | "/input/squeeze/force") => {
+            Some(Boolean(hand.buttons.squeeze > 0.5))
         }
-        (Boolean(_), "/input/squeeze/click") => Some(Boolean(hand.buttons.squeeze > 0.5)),
         (Boolean(_), "/input/a/click" | "/input/x/click") => {
             Some(Boolean(hand.buttons.primary_click))
         }
@@ -245,8 +260,9 @@ fn resolve_value(
 /// Sync one action's subaction values from the live `DeviceState`, by resolving
 /// each declared subaction path against the bindings suggested for it.
 fn sync_one_action(instance_id: u64, action_id: u64, device_state: &DeviceState) -> Result<()> {
-    let keys: Vec<u64> =
-        with_action(action_id, |a| Ok(a.subaction_values.keys().copied().collect()))?;
+    let keys: Vec<u64> = with_action(action_id, |a| {
+        Ok(a.subaction_values.keys().copied().collect())
+    })?;
 
     let mut resolutions: Vec<(u64, Option<(usize, String)>)> = Vec::new();
     with_instance(instance_id, |instance| {
@@ -316,17 +332,18 @@ fn sync_one_action(instance_id: u64, action_id: u64, device_state: &DeviceState)
 
     with_action(action_id, |action| {
         for (key, resolution) in &resolutions {
-            let Some((hand_idx, suffix)) = resolution else { continue };
+            let Some((hand_idx, suffix)) = resolution else {
+                continue;
+            };
             let hand = &device_state.hands[*hand_idx];
             if let Some(current) = action.subaction_values.get_mut(key)
                 && let Some(new_value) = resolve_value(&current.current, hand, suffix)
             {
                 current.changed_since_last_sync = current.current != new_value;
                 if current.changed_since_last_sync {
-                    log::debug!(
-                        "[action {action_id}] hand={hand_idx} {suffix} -> {new_value:?}"
-                    );
-                    current.last_change_time = crate::loader::START_TIME.elapsed().as_nanos() as u64;
+                    log::debug!("[action {action_id}] hand={hand_idx} {suffix} -> {new_value:?}");
+                    current.last_change_time =
+                        crate::loader::START_TIME.elapsed().as_nanos() as u64;
                 }
                 current.current = new_value;
                 current.is_active = true;

@@ -23,7 +23,41 @@ const SUPPORTED_SWAPCHAIN_FORMATS: &[i64] = &[
     ash::vk::Format::R8G8B8A8_UINT.as_raw() as i64,
     ash::vk::Format::R8G8B8A8_SINT.as_raw() as i64,
     ash::vk::Format::R8G8B8A8_SRGB.as_raw() as i64,
+    // Depth formats: not read back (no visual meaning, and this software
+    // compositor doesn't reproject), but apps like Godot hard-require at
+    // least one usable depth swapchain format to initialize at all, even
+    // when XR_KHR_composition_layer_depth's actual submitted depth data is
+    // otherwise ignored here.
+    ash::vk::Format::D32_SFLOAT.as_raw() as i64,
+    ash::vk::Format::D24_UNORM_S8_UINT.as_raw() as i64,
+    ash::vk::Format::D32_SFLOAT_S8_UINT.as_raw() as i64,
+    ash::vk::Format::D16_UNORM.as_raw() as i64,
 ];
+
+fn is_depth_format(format: ash::vk::Format) -> bool {
+    matches!(
+        format,
+        ash::vk::Format::D32_SFLOAT
+            | ash::vk::Format::D24_UNORM_S8_UINT
+            | ash::vk::Format::D32_SFLOAT_S8_UINT
+            | ash::vk::Format::D16_UNORM
+            | ash::vk::Format::D16_UNORM_S8_UINT
+    )
+}
+
+fn aspect_mask_for_format(format: ash::vk::Format) -> ash::vk::ImageAspectFlags {
+    match format {
+        ash::vk::Format::D24_UNORM_S8_UINT
+        | ash::vk::Format::D32_SFLOAT_S8_UINT
+        | ash::vk::Format::D16_UNORM_S8_UINT => {
+            ash::vk::ImageAspectFlags::DEPTH | ash::vk::ImageAspectFlags::STENCIL
+        }
+        ash::vk::Format::D32_SFLOAT | ash::vk::Format::D16_UNORM => {
+            ash::vk::ImageAspectFlags::DEPTH
+        }
+        _ => ash::vk::ImageAspectFlags::COLOR,
+    }
+}
 
 pub extern "system" fn enumerate_formats(
     xr_session: xr::Session,
@@ -263,10 +297,14 @@ impl SimulatedSwapchain {
 
         let gb = &session.graphics_binding;
         let device = gb.device.clone();
-        let queue = unsafe { gb.device.get_device_queue(gb.queue_family_index, gb.queue_index) };
+        let queue = unsafe {
+            gb.device
+                .get_device_queue(gb.queue_family_index, gb.queue_index)
+        };
         let queue_family_index = gb.queue_family_index;
         let phys_mem_props = unsafe {
-            gb.instance.get_physical_device_memory_properties(gb.physical_device)
+            gb.instance
+                .get_physical_device_memory_properties(gb.physical_device)
         };
 
         let num_images = if create_info
@@ -370,7 +408,8 @@ impl SimulatedSwapchain {
             self.queue,
             self.queue_family_index,
         ) {
-            let bytes_per_pixel = pixels.len() / (offscreen.array_layers as usize * self.width as usize * self.height as usize);
+            let bytes_per_pixel = pixels.len()
+                / (offscreen.array_layers as usize * self.width as usize * self.height as usize);
             let layer_size = self.width as usize * self.height as usize * bytes_per_pixel;
 
             // Array-layer swapchains (e.g. multiview stereo rendering) pack every
@@ -514,6 +553,15 @@ impl OffscreenImage {
             | ash::vk::Format::R8G8B8A8_UINT
             | ash::vk::Format::R8G8B8A8_SINT
             | ash::vk::Format::R8G8B8A8_SRGB => 4,
+            format if is_depth_format(format) => {
+                // Not meaningful to show in the dashboard, and (per the
+                // frame-end handling in frame.rs) never actually reached in
+                // practice — depth swapchains aren't referenced by a
+                // projection layer's own sub_image, only via the (unparsed)
+                // XrCompositionLayerDepthInfoKHR chained off each view.
+                log::debug!("read_pixels: skipping depth format {:?}", self.format);
+                return None;
+            }
             _ => {
                 log::error!("read_pixels: unsupported format {:?}", self.format);
                 return None;
@@ -548,7 +596,9 @@ impl OffscreenImage {
                     None,
                 )
                 .ok()?;
-            device.bind_buffer_memory(staging_buf, staging_mem, 0).ok()?;
+            device
+                .bind_buffer_memory(staging_buf, staging_mem, 0)
+                .ok()?;
 
             // --- one-shot command buffer ---
             let cmd_pool = device
@@ -671,7 +721,12 @@ impl OffscreenImage {
 
             // map and copy
             let ptr = device
-                .map_memory(staging_mem, 0, buffer_size, ash::vk::MemoryMapFlags::empty())
+                .map_memory(
+                    staging_mem,
+                    0,
+                    buffer_size,
+                    ash::vk::MemoryMapFlags::empty(),
+                )
                 .ok()? as *const u8;
             let pixels = std::slice::from_raw_parts(ptr, buffer_size as usize).to_vec();
             device.unmap_memory(staging_mem);
@@ -762,7 +817,7 @@ impl OffscreenImage {
                 },
                 format,
                 subresource_range: ash::vk::ImageSubresourceRange {
-                    aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+                    aspect_mask: aspect_mask_for_format(format),
                     base_mip_level: 0,
                     level_count: 1,
                     base_array_layer: 0,

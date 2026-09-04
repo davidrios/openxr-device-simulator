@@ -26,6 +26,10 @@ const SUPPORTED_EXTS: &[(&[u8], u32)] = &[
         xr::EXT_HAND_TRACKING_EXTENSION_NAME,
         xr::EXT_hand_tracking_SPEC_VERSION,
     ),
+    (
+        xr::KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME,
+        xr::KHR_composition_layer_depth_SPEC_VERSION,
+    ),
 ];
 
 pub extern "system" fn enumerate_extension_properties(

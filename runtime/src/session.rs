@@ -65,17 +65,22 @@ pub extern "system" fn destroy(xr_obj: xr::Session) -> xr::Result {
         return xr::Result::ERROR_HANDLE_INVALID;
     }
 
-    let instance_id = xr_obj.into_raw();
+    let session_id = xr_obj.into_raw();
 
-    if INSTANCES
+    let removed = INSTANCES
         .lock()
         .expect("couldn't acquire instances")
-        .remove(&instance_id)
-        .is_some()
-    {
-        log::debug!("destroyed {instance_id}");
+        .remove(&session_id);
+
+    if let Some(session) = removed {
+        let owning_instance_id = unsafe { &*session.get() }.instance_id;
+        let _ = with_instance(owning_instance_id, |instance| {
+            instance.clear_session();
+            Ok(())
+        });
+        log::debug!("destroyed {session_id}");
     } else {
-        log::debug!("instance {instance_id} not found");
+        log::debug!("instance {session_id} not found");
     }
 
     xr::Result::SUCCESS
@@ -255,7 +260,15 @@ impl SimulatedSession {
             // Action sets are optional in OpenXR — an app with no input needs
             // (e.g. HMD-only rendering) may never attach one, so gating
             // readiness on it would leave such apps stuck at IDLE forever.
-            if !self.space_ids.is_empty() && !self.swapchain_ids.is_empty() {
+            //
+            // Swapchains are similarly not required here: many real apps
+            // (Godot's OpenXR module among them) wait for READY before ever
+            // creating a swapchain, matching how real runtimes behave (the
+            // HMD is "ready" independent of what the app has allocated so
+            // far) — requiring one first deadlocks those apps forever. A
+            // reference space is the one thing essentially every app creates
+            // up front, so gate on just that.
+            if !self.space_ids.is_empty() {
                 self.state = xr::SessionState::READY;
                 schedule_event(
                     self.instance_id,

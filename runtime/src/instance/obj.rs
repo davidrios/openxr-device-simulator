@@ -13,7 +13,6 @@ static COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);
 pub enum InstanceState {
     Created,
     SessionCreated,
-    ActionSetCreated,
 }
 
 #[allow(dead_code)]
@@ -96,15 +95,24 @@ impl SimulatedInstance {
         }
     }
 
+    /// Called when the instance's session is destroyed, so a later
+    /// `xrCreateSession` on the same instance (a valid, real-world pattern —
+    /// e.g. Godot's OpenXR module creates and destroys a probe session
+    /// before the real one) isn't rejected by a state machine stuck at
+    /// `SessionCreated`.
+    pub fn clear_session(&mut self) {
+        self.session_id = None;
+        self.state = InstanceState::Created;
+    }
+
+    /// Action sets are an instance-level concept in OpenXR — apps
+    /// legitimately create them right after `xrCreateInstance`, well before
+    /// any session exists (Godot does this; `hello_xr`/`bevy_oxr` happen to
+    /// create their session first, which is also valid but had made this
+    /// look like a hard ordering requirement). No session-state gate here.
     pub fn add_action_set(&mut self, action_set_id: u64) -> Result<()> {
-        if let InstanceState::SessionCreated = self.state {
-            self.action_set_ids.insert(action_set_id);
-            Ok(())
-        } else {
-            Err(format!("unexpected state: {:?}", self.state)
-                .as_str()
-                .into())
-        }
+        self.action_set_ids.insert(action_set_id);
+        Ok(())
     }
 
     pub fn set_interaction_profile_bindings(

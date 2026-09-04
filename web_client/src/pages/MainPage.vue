@@ -20,6 +20,18 @@ const keysDown = new Set<string>();
 let animationFrame = 0;
 let lastFrameTime = 0;
 
+// Matches the resting controller pose in runtime/src/input/device_state.rs —
+// controller position isn't driven by keyboard/mouse yet (see gamepad/gyro phase).
+const LEFT_HAND_POSE = { position: { x: -0.3, y: -0.3, z: -0.5 }, orientation: { x: 0, y: 0, z: 0, w: 1 } };
+const RIGHT_HAND_POSE = { position: { x: 0.3, y: -0.3, z: -0.5 }, orientation: { x: 0, y: 0, z: 0, w: 1 } };
+
+function stickAxis(negKey: string, posKey: string): number {
+  let v = 0;
+  if (keysDown.has(posKey)) v += 1;
+  if (keysDown.has(negKey)) v -= 1;
+  return v;
+}
+
 watch(
   () => connection.isConnected,
   async (connected) => {
@@ -116,12 +128,40 @@ function onFrame(time: number) {
   const cp = Math.cos(pitch * 0.5);
 
   connection.sendInput({
-    position: { x: position.x, y: position.y, z: position.z },
-    orientation: {
-      x: cy * sp,
-      y: sy * cp,
-      z: -sy * sp,
-      w: cy * cp,
+    head: {
+      position: { x: position.x, y: position.y, z: position.z },
+      orientation: {
+        x: cy * sp,
+        y: sy * cp,
+        z: -sy * sp,
+        w: cy * cp,
+      },
+    },
+    leftHand: {
+      pose: LEFT_HAND_POSE,
+      buttons: {
+        trigger: keysDown.has('KeyF') ? 1 : 0,
+        squeeze: keysDown.has('KeyR') ? 1 : 0,
+        thumbstick_x: stickAxis('KeyJ', 'KeyL'),
+        thumbstick_y: stickAxis('KeyK', 'KeyI'),
+        thumbstick_click: keysDown.has('Digit3'),
+        primary_click: keysDown.has('Digit1'),
+        secondary_click: keysDown.has('Digit2'),
+        menu_click: keysDown.has('Digit4'),
+      },
+    },
+    rightHand: {
+      pose: RIGHT_HAND_POSE,
+      buttons: {
+        trigger: keysDown.has('ShiftRight') ? 1 : 0,
+        squeeze: keysDown.has('ControlRight') ? 1 : 0,
+        thumbstick_x: stickAxis('ArrowLeft', 'ArrowRight'),
+        thumbstick_y: stickAxis('ArrowDown', 'ArrowUp'),
+        thumbstick_click: keysDown.has('Digit9'),
+        primary_click: keysDown.has('Digit7'),
+        secondary_click: keysDown.has('Digit8'),
+        menu_click: keysDown.has('Digit0'),
+      },
     },
   });
 
@@ -140,6 +180,10 @@ async function requestPointerLock() {
       up/down
     </div>
     <div v-else class="text-caption text-grey">Press Esc to release mouse</div>
+    <div class="text-caption text-grey">
+      Left controller: IJKL stick, R squeeze, F trigger, 1/2/3/4 = A/B/stick-click/menu &nbsp;·&nbsp;
+      Right controller: arrow keys stick, RCtrl squeeze, RShift trigger, 7/8/9/0 = A/B/stick-click/menu
+    </div>
     <div class="row q-gutter-md">
       <div v-for="(src, id) in connection.frames" :key="id" class="column items-center">
         <div class="text-caption">Swapchain {{ id }}</div>

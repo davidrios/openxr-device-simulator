@@ -1,9 +1,17 @@
 use crate::{
-    input::action::{SimulatedActionValue, with_action},
+    input::{
+        action::{SimulatedActionValue, with_action},
+        action_set::with_action_set,
+        device_state::{DeviceState, HandState},
+    },
     instance::api::with_instance,
     prelude::*,
     session::with_session,
 };
+
+/// The interaction profile we prefer to resolve bindings against when an app
+/// suggests several (see `sync_one_action`).
+const TARGET_INTERACTION_PROFILE: &str = "/interaction_profiles/oculus/touch_controller";
 
 fn check_path_is_valid(instance_id: u64, path_id: u64) -> Result<()> {
     if path_id == 0 {
@@ -179,7 +187,153 @@ pub extern "system" fn sync_actions(
             }
         }
 
+        let instance_id = session.instance_id;
+        let device_state = crate::input::device_state::get_device_state();
+
+        for active_action_set in active_action_sets {
+            let action_ids: Vec<u64> = with_action_set(active_action_set.action_set.into_raw(), |set| {
+                Ok(set.actions().to_vec())
+            })?;
+            for action_id in action_ids {
+                sync_one_action(instance_id, action_id, &device_state)?;
+            }
+        }
+
         Ok(xr::Result::SUCCESS)
     })
     .into_xr_result()
+}
+
+/// Resolve the live device value for one input suffix (e.g. "/input/trigger/value"),
+/// matching the type of `current` so the action's declared type never changes.
+fn resolve_value(
+    current: &SimulatedActionValue,
+    hand: &HandState,
+    suffix: &str,
+) -> Option<SimulatedActionValue> {
+    use SimulatedActionValue::*;
+    match (current, suffix) {
+        (Boolean(_), "/input/trigger/click" | "/input/select/click") => {
+            Some(Boolean(hand.buttons.trigger > 0.5))
+        }
+        (Boolean(_), "/input/squeeze/click") => Some(Boolean(hand.buttons.squeeze > 0.5)),
+        (Boolean(_), "/input/a/click" | "/input/x/click") => {
+            Some(Boolean(hand.buttons.primary_click))
+        }
+        (Boolean(_), "/input/b/click" | "/input/y/click") => {
+            Some(Boolean(hand.buttons.secondary_click))
+        }
+        (Boolean(_), "/input/menu/click") => Some(Boolean(hand.buttons.menu_click)),
+        (Boolean(_), "/input/thumbstick/click") => Some(Boolean(hand.buttons.thumbstick_click)),
+        (Float(_), "/input/trigger/value" | "/input/select/value") => {
+            Some(Float(hand.buttons.trigger))
+        }
+        (Float(_), "/input/squeeze/value" | "/input/squeeze/force") => {
+            Some(Float(hand.buttons.squeeze))
+        }
+        (Float(_), "/input/thumbstick/x") => Some(Float(hand.buttons.thumbstick.0)),
+        (Float(_), "/input/thumbstick/y") => Some(Float(hand.buttons.thumbstick.1)),
+        (Vector2f(_), "/input/thumbstick") => Some(Vector2f(xr::Vector2f {
+            x: hand.buttons.thumbstick.0,
+            y: hand.buttons.thumbstick.1,
+        })),
+        (Pose(_), "/input/grip/pose" | "/input/aim/pose") => Some(Pose(hand.controller_pose)),
+        _ => None,
+    }
+}
+
+/// Sync one action's subaction values from the live `DeviceState`, by resolving
+/// each declared subaction path against the bindings suggested for it.
+fn sync_one_action(instance_id: u64, action_id: u64, device_state: &DeviceState) -> Result<()> {
+    let keys: Vec<u64> =
+        with_action(action_id, |a| Ok(a.subaction_values.keys().copied().collect()))?;
+
+    let mut resolutions: Vec<(u64, Option<(usize, String)>)> = Vec::new();
+    with_instance(instance_id, |instance| {
+        // Apps commonly suggest bindings for several interaction profiles at once
+        // (e.g. KHR simple + Oculus touch) for compatibility. Prefer bindings
+        // suggested for our target profile so we don't pick up an incompatible
+        // path (like a boolean "/input/select/click" for a float action) from a
+        // profile we don't otherwise emulate; fall back to any profile if the
+        // app never suggested ours.
+        let target_profile_id = instance
+            .paths
+            .iter()
+            .find(|(_, path)| path.as_str() == TARGET_INTERACTION_PROFILE)
+            .map(|(id, _)| *id);
+
+        let profile_bindings = target_profile_id
+            .and_then(|id| instance.interaction_profile_bindings.get(&id))
+            .filter(|bindings| bindings.iter().any(|b| b.action == action_id));
+
+        let binding_paths: Vec<u64> = match profile_bindings {
+            Some(bindings) => bindings
+                .iter()
+                .filter(|b| b.action == action_id)
+                .map(|b| b.binding)
+                .collect(),
+            None => instance
+                .interaction_profile_bindings
+                .values()
+                .flat_map(|bindings| bindings.iter())
+                .filter(|b| b.action == action_id)
+                .map(|b| b.binding)
+                .collect(),
+        };
+
+        let mut candidates: Vec<(usize, String)> = Vec::new();
+        for path_id in binding_paths {
+            let path_str = instance.get_path_string(path_id)?.clone();
+            if let Some(rest) = path_str.strip_prefix("/user/hand/left") {
+                candidates.push((0, rest.to_string()));
+            } else if let Some(rest) = path_str.strip_prefix("/user/hand/right") {
+                candidates.push((1, rest.to_string()));
+            }
+        }
+
+        for &key in &keys {
+            let hand_filter = if key == 0 {
+                None
+            } else {
+                let key_path = instance.get_path_string(key)?;
+                if key_path.starts_with("/user/hand/left") {
+                    Some(0)
+                } else if key_path.starts_with("/user/hand/right") {
+                    Some(1)
+                } else {
+                    None
+                }
+            };
+            let found = match hand_filter {
+                Some(hand) => candidates.iter().find(|(h, _)| *h == hand).cloned(),
+                None => candidates.first().cloned(),
+            };
+            resolutions.push((key, found));
+        }
+
+        Ok(())
+    })?;
+
+    with_action(action_id, |action| {
+        for (key, resolution) in &resolutions {
+            let Some((hand_idx, suffix)) = resolution else { continue };
+            let hand = &device_state.hands[*hand_idx];
+            if let Some(current) = action.subaction_values.get_mut(key)
+                && let Some(new_value) = resolve_value(&current.current, hand, suffix)
+            {
+                current.changed_since_last_sync = current.current != new_value;
+                if current.changed_since_last_sync {
+                    log::debug!(
+                        "[action {action_id}] hand={hand_idx} {suffix} -> {new_value:?}"
+                    );
+                    current.last_change_time = crate::loader::START_TIME.elapsed().as_nanos() as u64;
+                }
+                current.current = new_value;
+                current.is_active = true;
+            }
+        }
+        Ok(())
+    })?;
+
+    Ok(())
 }

@@ -33,8 +33,48 @@ struct PoseData {
 }
 
 #[derive(serde::Deserialize)]
+struct ButtonsData {
+    trigger: f32,
+    squeeze: f32,
+    thumbstick_x: f32,
+    thumbstick_y: f32,
+    thumbstick_click: bool,
+    primary_click: bool,
+    secondary_click: bool,
+    menu_click: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct HandData {
+    pose: PoseData,
+    buttons: ButtonsData,
+}
+
+#[derive(serde::Deserialize)]
 struct InputData {
     head: PoseData,
+    left_hand: HandData,
+    right_hand: HandData,
+}
+
+impl From<ButtonsData> for crate::input::device_state::ControllerButtons {
+    fn from(value: ButtonsData) -> Self {
+        Self {
+            trigger: value.trigger,
+            squeeze: value.squeeze,
+            thumbstick: (value.thumbstick_x, value.thumbstick_y),
+            thumbstick_click: value.thumbstick_click,
+            primary_click: value.primary_click,
+            secondary_click: value.secondary_click,
+            menu_click: value.menu_click,
+        }
+    }
+}
+
+impl From<HandData> for crate::input::device_state::HandState {
+    fn from(value: HandData) -> Self {
+        Self { controller_pose: value.pose.into(), buttons: value.buttons.into() }
+    }
 }
 
 impl From<PoseData> for xr::Posef {
@@ -175,6 +215,14 @@ pub fn start() {
 
                 socket.on("input", async |Data::<InputData>(data)| {
                     crate::input::device_state::set_head_pose(data.head.into());
+                    crate::input::device_state::set_hand(
+                        crate::input::device_state::LEFT,
+                        data.left_hand.into(),
+                    );
+                    crate::input::device_state::set_hand(
+                        crate::input::device_state::RIGHT,
+                        data.right_hand.into(),
+                    );
                 });
 
                 std::thread::spawn(move || {

@@ -76,7 +76,21 @@ pub extern "system" fn locate(
                     _ => simulated_reference_space.pose,
                 }
             }
-            SimulatedSpaceType::Action(simulated_action_space) => simulated_action_space.pose,
+            SimulatedSpaceType::Action(simulated_action_space) => {
+                let tracked_pose = crate::input::action::with_action(
+                    simulated_action_space.action,
+                    |action| {
+                        let value = action.subaction_value(simulated_action_space.subaction_path)?;
+                        match value.current {
+                            crate::input::action::SimulatedActionValue::Pose(pose) => Ok(pose),
+                            _ => Ok(crate::utils::create_identity_pose()),
+                        }
+                    },
+                )
+                .unwrap_or_else(|_| crate::utils::create_identity_pose());
+
+                crate::utils::compose_poses(tracked_pose, simulated_action_space.pose)
+            }
         };
 
         log::debug!("locate: {xr_time:?}, {space_location:?}",);

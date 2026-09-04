@@ -42,18 +42,35 @@ const previewScale = ref(Number(localStorage.getItem('previewScale')) || 0.6);
 watch(previewScale, (value) => localStorage.setItem('previewScale', String(value)));
 
 // Matches the resting controller pose in runtime/src/input/device_state.rs.
-// Real 6DoF (gyro + arm model) comes later; for keyboard testing the thumbstick
-// just pushes the hand around in the X/Y plane so movement is visible.
-const IDENTITY_ORIENTATION = { x: 0, y: 0, z: 0, w: 1 };
+// Real 6DoF (gyro + arm model) comes later; for keyboard testing IJKL/arrows
+// orient the hands (for aiming) and, held with Shift, move them instead.
 const leftHandPos = { x: -0.3, y: DEFAULT_STANDING_HEIGHT - 0.3, z: -0.5 };
 const rightHandPos = { x: 0.3, y: DEFAULT_STANDING_HEIGHT - 0.3, z: -0.5 };
+let leftHandYaw = 0;
+let leftHandPitch = 0;
+let rightHandYaw = 0;
+let rightHandPitch = 0;
 const HAND_MOVE_SPEED = 0.5; // meters per second
+const HAND_ANGULAR_SPEED = 2.0; // radians per second
 
 function stickAxis(negKey: string, posKey: string): number {
   let v = 0;
   if (keysDown.has(posKey)) v += 1;
   if (keysDown.has(negKey)) v -= 1;
   return v;
+}
+
+function isShiftHeld(): boolean {
+  return keysDown.has('ShiftLeft') || keysDown.has('ShiftRight');
+}
+
+// q = q_yaw (Y-axis) * q_pitch (X-axis)
+function quatFromYawPitch(yaw: number, pitch: number) {
+  const sy = Math.sin(yaw * 0.5);
+  const cy = Math.cos(yaw * 0.5);
+  const sp = Math.sin(pitch * 0.5);
+  const cp = Math.cos(pitch * 0.5);
+  return { x: cy * sp, y: sy * cp, z: -sy * sp, w: cy * cp };
 }
 
 watch(
@@ -115,31 +132,38 @@ function onFrame(time: number) {
   const dt = (time - lastFrameTime) / 1000;
   lastFrameTime = time;
 
-  // Forward/right vectors on the horizontal plane, from yaw only (ignore pitch).
-  const forward = { x: -Math.sin(yaw), z: -Math.cos(yaw) };
-  const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+  const shiftHeld = isShiftHeld();
 
+  // Shift+WASD moves the head; plain WASD instead drives the movement
+  // joystick (left thumbstick) below. Space/Ctrl (unconditional) move it
+  // vertically, since neither hand's controls have a vertical axis to
+  // contend with.
   let moveX = 0;
   let moveZ = 0;
   let moveY = 0;
-  if (keysDown.has('KeyW')) {
-    moveX += forward.x;
-    moveZ += forward.z;
-  }
-  if (keysDown.has('KeyS')) {
-    moveX -= forward.x;
-    moveZ -= forward.z;
-  }
-  if (keysDown.has('KeyD')) {
-    moveX += right.x;
-    moveZ += right.z;
-  }
-  if (keysDown.has('KeyA')) {
-    moveX -= right.x;
-    moveZ -= right.z;
+  if (shiftHeld) {
+    // Forward/right vectors on the horizontal plane, from yaw only (ignore pitch).
+    const forward = { x: -Math.sin(yaw), z: -Math.cos(yaw) };
+    const right = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+    if (keysDown.has('KeyW')) {
+      moveX += forward.x;
+      moveZ += forward.z;
+    }
+    if (keysDown.has('KeyS')) {
+      moveX -= forward.x;
+      moveZ -= forward.z;
+    }
+    if (keysDown.has('KeyD')) {
+      moveX += right.x;
+      moveZ += right.z;
+    }
+    if (keysDown.has('KeyA')) {
+      moveX -= right.x;
+      moveZ -= right.z;
+    }
   }
   if (keysDown.has('Space')) moveY += 1;
-  if (keysDown.has('ShiftLeft')) moveY -= 1;
+  if (keysDown.has('ControlLeft')) moveY -= 1;
 
   const moveLen = Math.hypot(moveX, moveZ);
   if (moveLen > 0) {
@@ -148,31 +172,38 @@ function onFrame(time: number) {
   }
   position.y += moveY * MOVE_SPEED * dt;
 
-  const leftStick = { x: stickAxis('KeyJ', 'KeyL'), y: stickAxis('KeyK', 'KeyI') };
-  const rightStick = { x: stickAxis('ArrowLeft', 'ArrowRight'), y: stickAxis('ArrowDown', 'ArrowUp') };
-  leftHandPos.x += leftStick.x * HAND_MOVE_SPEED * dt;
-  leftHandPos.y += leftStick.y * HAND_MOVE_SPEED * dt;
-  rightHandPos.x += rightStick.x * HAND_MOVE_SPEED * dt;
-  rightHandPos.y += rightStick.y * HAND_MOVE_SPEED * dt;
+  // Plain WASD = the movement joystick (left hand thumbstick, for the game's
+  // own locomotion to read) — reads as 0 while Shift repurposes those same
+  // keys to move the head instead.
+  const leftStick = shiftHeld
+    ? { x: 0, y: 0 }
+    : { x: stickAxis('KeyA', 'KeyD'), y: stickAxis('KeyS', 'KeyW') };
+  // No keyboard binding drives the right thumbstick currently.
+  const rightStick = { x: 0, y: 0 };
 
-  // q = q_yaw (Y-axis) * q_pitch (X-axis)
-  const sy = Math.sin(yaw * 0.5);
-  const cy = Math.cos(yaw * 0.5);
-  const sp = Math.sin(pitch * 0.5);
-  const cp = Math.cos(pitch * 0.5);
+  // IJKL/arrows orient their hand (for aiming) by default, and move it
+  // instead when Shift is held.
+  if (shiftHeld) {
+    const leftMove = { x: stickAxis('KeyJ', 'KeyL'), y: stickAxis('KeyK', 'KeyI') };
+    leftHandPos.x += leftMove.x * HAND_MOVE_SPEED * dt;
+    leftHandPos.y += leftMove.y * HAND_MOVE_SPEED * dt;
+    const rightMove = { x: stickAxis('ArrowLeft', 'ArrowRight'), y: stickAxis('ArrowDown', 'ArrowUp') };
+    rightHandPos.x += rightMove.x * HAND_MOVE_SPEED * dt;
+    rightHandPos.y += rightMove.y * HAND_MOVE_SPEED * dt;
+  } else {
+    leftHandYaw -= stickAxis('KeyJ', 'KeyL') * HAND_ANGULAR_SPEED * dt;
+    leftHandPitch += stickAxis('KeyK', 'KeyI') * HAND_ANGULAR_SPEED * dt;
+    rightHandYaw -= stickAxis('ArrowLeft', 'ArrowRight') * HAND_ANGULAR_SPEED * dt;
+    rightHandPitch += stickAxis('ArrowDown', 'ArrowUp') * HAND_ANGULAR_SPEED * dt;
+  }
 
   connection.sendInput({
     head: {
       position: { x: position.x, y: position.y, z: position.z },
-      orientation: {
-        x: cy * sp,
-        y: sy * cp,
-        z: -sy * sp,
-        w: cy * cp,
-      },
+      orientation: quatFromYawPitch(yaw, pitch),
     },
     leftHand: {
-      pose: { position: { ...leftHandPos }, orientation: IDENTITY_ORIENTATION },
+      pose: { position: { ...leftHandPos }, orientation: quatFromYawPitch(leftHandYaw, leftHandPitch) },
       buttons: {
         trigger: keysDown.has('KeyF') ? 1 : 0,
         squeeze: keysDown.has('KeyR') ? 1 : 0,
@@ -185,9 +216,9 @@ function onFrame(time: number) {
       },
     },
     rightHand: {
-      pose: { position: { ...rightHandPos }, orientation: IDENTITY_ORIENTATION },
+      pose: { position: { ...rightHandPos }, orientation: quatFromYawPitch(rightHandYaw, rightHandPitch) },
       buttons: {
-        trigger: keysDown.has('ShiftRight') ? 1 : 0,
+        trigger: keysDown.has('Enter') ? 1 : 0,
         squeeze: keysDown.has('ControlRight') ? 1 : 0,
         thumbstick_x: rightStick.x,
         thumbstick_y: rightStick.y,
@@ -228,7 +259,11 @@ const eyeIds = computed(() => {
   >
     <div class="row items-center no-wrap q-px-sm q-py-xs" style="flex: 0 0 auto">
       <span class="text-caption text-grey">
-        {{ isLocked ? 'Esc to release mouse' : 'Click to capture mouse — move to look, WASD to move' }}
+        {{
+          isLocked
+            ? 'Esc to release mouse'
+            : 'Click to capture mouse — move to look, WASD = move joystick, Shift = move head/hands'
+        }}
       </span>
       <q-space />
       <span v-if="eyeIds.left !== undefined" class="text-caption text-grey q-mr-sm">
@@ -247,8 +282,12 @@ const eyeIds = computed(() => {
       />
       <q-icon name="help_outline" size="18px" class="text-grey cursor-help">
         <q-tooltip>
-          Left: IJKL stick, R squeeze, F trigger, 1/2/3/4 = A/B/stick-click/menu<br />
-          Right: arrows stick, RCtrl squeeze, RShift trigger, 7/8/9/0 = A/B/stick-click/menu
+          Head: WASD = movement joystick (left thumbstick); mouse-look; Shift+WASD = move head; Space/Ctrl =
+          head up/down<br />
+          Left hand (IJKL): aim (yaw/pitch); Shift+IJKL = move hand; R squeeze, F trigger,
+          1/2/3/4 = A/B/stick-click/menu<br />
+          Right hand (arrows): aim (yaw/pitch); Shift+arrows = move hand; RCtrl squeeze, Enter
+          trigger, 7/8/9/0 = A/B/stick-click/menu
         </q-tooltip>
       </q-icon>
     </div>

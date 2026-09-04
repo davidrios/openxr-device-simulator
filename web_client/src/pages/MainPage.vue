@@ -20,6 +20,15 @@ const keysDown = new Set<string>();
 let animationFrame = 0;
 let lastFrameTime = 0;
 
+// q-page only gets a min-height from Quasar (a floor, not a real height), so a
+// flex-grow child has nothing definite to fill and content just grows the page
+// taller than the viewport. Measure the actual space below the header instead.
+const availableHeight = ref(0);
+function updateAvailableHeight() {
+  const header = document.querySelector('.q-header');
+  availableHeight.value = window.innerHeight - (header?.clientHeight ?? 0);
+}
+
 // Matches the resting controller pose in runtime/src/input/device_state.rs.
 // Real 6DoF (gyro + arm model) comes later; for keyboard testing the thumbstick
 // just pushes the hand around in the X/Y plane so movement is visible.
@@ -55,6 +64,8 @@ onMounted(async () => {
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup', onKeyUp);
+  updateAvailableHeight();
+  window.addEventListener('resize', updateAvailableHeight);
   lastFrameTime = performance.now();
   animationFrame = requestAnimationFrame(onFrame);
 });
@@ -64,6 +75,7 @@ onUnmounted(() => {
   document.removeEventListener('mousemove', onMouseMove);
   document.removeEventListener('keydown', onKeyDown);
   document.removeEventListener('keyup', onKeyUp);
+  window.removeEventListener('resize', updateAvailableHeight);
   if (document.pointerLockElement) document.exitPointerLock();
   cancelAnimationFrame(animationFrame);
 });
@@ -193,29 +205,43 @@ const eyeIds = computed(() => {
 </script>
 
 <template>
-  <q-page class="column items-center q-gutter-md q-pa-md" @click="requestPointerLock">
-    <div v-if="!isLocked" class="text-caption text-grey">
-      Click anywhere to capture mouse — move to look around, WASD to move, Space/Shift for
-      up/down
+  <q-page
+    class="column no-wrap"
+    :style="{ height: availableHeight + 'px', overflow: 'hidden' }"
+    @click="requestPointerLock"
+  >
+    <div class="row items-center no-wrap q-px-sm q-py-xs" style="flex: 0 0 auto">
+      <span class="text-caption text-grey">
+        {{ isLocked ? 'Esc to release mouse' : 'Click to capture mouse — move to look, WASD to move' }}
+      </span>
+      <q-space />
+      <span v-if="eyeIds.left !== undefined" class="text-caption text-grey q-mr-sm">
+        Cross your eyes for 3D
+      </span>
+      <q-icon name="help_outline" size="18px" class="text-grey cursor-help">
+        <q-tooltip>
+          Left: IJKL stick, R squeeze, F trigger, 1/2/3/4 = A/B/stick-click/menu<br />
+          Right: arrows stick, RCtrl squeeze, RShift trigger, 7/8/9/0 = A/B/stick-click/menu
+        </q-tooltip>
+      </q-icon>
     </div>
-    <div v-else class="text-caption text-grey">Press Esc to release mouse</div>
-    <div class="text-caption text-grey">
-      Left controller: IJKL stick, R squeeze, F trigger, 1/2/3/4 = A/B/stick-click/menu &nbsp;·&nbsp;
-      Right controller: arrow keys stick, RCtrl squeeze, RShift trigger, 7/8/9/0 = A/B/stick-click/menu
+    <div
+      class="col row justify-center items-center no-wrap"
+      style="min-height: 0; gap: 8px"
+    >
+      <img
+        v-if="eyeIds.right !== undefined"
+        :src="connection.frames[eyeIds.right]"
+        style="max-width: calc(50% - 4px); max-height: 100%; image-rendering: pixelated"
+      />
+      <img
+        v-if="eyeIds.left !== undefined"
+        :src="connection.frames[eyeIds.left]"
+        style="max-width: calc(50% - 4px); max-height: 100%; image-rendering: pixelated"
+      />
     </div>
-    <div v-if="eyeIds.left !== undefined && eyeIds.right !== undefined" class="column items-center">
-      <div class="text-caption text-grey">Cross-eyed view — cross your eyes to fuse the pair into 3D</div>
-      <div class="row q-gutter-sm">
-        <img
-          :src="connection.frames[eyeIds.right]"
-          style="width: 360px; image-rendering: pixelated"
-        />
-        <img
-          :src="connection.frames[eyeIds.left]"
-          style="width: 360px; image-rendering: pixelated"
-        />
-      </div>
+    <div class="row justify-center q-py-xs" style="flex: 0 0 auto">
+      <q-btn dense size="sm" @click.stop="connection.ping()">Ping</q-btn>
     </div>
-    <q-btn @click.stop="connection.ping()">Ping</q-btn>
   </q-page>
 </template>

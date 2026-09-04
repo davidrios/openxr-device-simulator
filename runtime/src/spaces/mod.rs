@@ -68,7 +68,13 @@ pub extern "system" fn locate(
         space_location.location_flags = xr::SpaceLocationFlags::from_raw(0b1111);
         space_location.pose = match &space.space {
             SimulatedSpaceType::Reference(simulated_reference_space) => {
-                simulated_reference_space.pose
+                match simulated_reference_space.reference_space_type {
+                    xr::ReferenceSpaceType::VIEW => crate::utils::compose_poses(
+                        crate::input::device_state::get_device_state().head,
+                        simulated_reference_space.pose,
+                    ),
+                    _ => simulated_reference_space.pose,
+                }
             }
             SimulatedSpaceType::Action(simulated_action_space) => simulated_action_space.pose,
         };

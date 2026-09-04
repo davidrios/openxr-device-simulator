@@ -585,7 +585,7 @@ impl OffscreenImage {
                 base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 0,
-                layer_count: 1,
+                layer_count: self.array_layers,
             };
 
             // COLOR_ATTACHMENT_OPTIMAL -> TRANSFER_SRC_OPTIMAL
@@ -622,7 +622,7 @@ impl OffscreenImage {
                         aspect_mask: ash::vk::ImageAspectFlags::COLOR,
                         mip_level: 0,
                         base_array_layer: 0,
-                        layer_count: 1,
+                        layer_count: self.array_layers,
                     },
                     image_offset: ash::vk::Offset3D::default(),
                     image_extent: ash::vk::Extent3D {

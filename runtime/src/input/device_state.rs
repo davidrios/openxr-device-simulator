@@ -6,6 +6,16 @@ use crate::utils::create_identity_pose;
 pub const LEFT: usize = 0;
 pub const RIGHT: usize = 1;
 
+/// A literal-origin head pose sits at floor level in the STAGE space,
+/// coincident with (or inside) any scene geometry placed near the origin —
+/// apps look broken (e.g. bevy_oxr's 3d_scene renders solid black) until the
+/// user manually raises the viewpoint. Default to a plausible standing eye
+/// height instead, matching a real headset. Kept in sync with the web
+/// client's own `position`/hand defaults in `MainPage.vue`, since those
+/// overwrite this default the moment a client connects and starts streaming
+/// input every frame.
+const DEFAULT_STANDING_HEIGHT: f32 = 1.6;
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ControllerButtons {
     pub trigger: f32,
@@ -28,7 +38,7 @@ impl HandState {
         Self {
             controller_pose: xr::Posef {
                 orientation: xr::Quaternionf { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
-                position: xr::Vector3f { x, y: -0.30, z: -0.5 },
+                position: xr::Vector3f { x, y: DEFAULT_STANDING_HEIGHT - 0.30, z: -0.5 },
             },
             buttons: ControllerButtons::default(),
         }
@@ -46,7 +56,10 @@ pub struct DeviceState {
 impl Default for DeviceState {
     fn default() -> Self {
         Self {
-            head: create_identity_pose(),
+            head: xr::Posef {
+                position: xr::Vector3f { x: 0.0, y: DEFAULT_STANDING_HEIGHT, z: 0.0 },
+                ..create_identity_pose()
+            },
             // Matches the resting wrist positions used by hand_tracking.rs.
             hands: [HandState::resting(-0.30), HandState::resting(0.30)],
         }

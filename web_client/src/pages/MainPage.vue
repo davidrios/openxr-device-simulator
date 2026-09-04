@@ -12,7 +12,15 @@ const connection = useConnection();
 const isLocked = ref(false);
 let yaw = 0;
 let pitch = 0;
-const position = { x: 0, y: 0, z: 0 };
+// A literal-origin head pose sits at floor level — coincident with (or
+// inside) any scene geometry an app places near the origin, so apps look
+// broken until the user manually moves. Default to a plausible standing eye
+// height instead, matching a real headset. Kept in sync with the runtime's
+// own default in runtime/src/input/device_state.rs, since this default
+// overwrites that one the moment the client connects and starts streaming
+// input every frame.
+const DEFAULT_STANDING_HEIGHT = 1.6;
+const position = { x: 0, y: DEFAULT_STANDING_HEIGHT, z: 0 };
 const SENSITIVITY = 0.002;
 const MOVE_SPEED = 1.5; // meters per second
 
@@ -37,8 +45,8 @@ watch(previewScale, (value) => localStorage.setItem('previewScale', String(value
 // Real 6DoF (gyro + arm model) comes later; for keyboard testing the thumbstick
 // just pushes the hand around in the X/Y plane so movement is visible.
 const IDENTITY_ORIENTATION = { x: 0, y: 0, z: 0, w: 1 };
-const leftHandPos = { x: -0.3, y: -0.3, z: -0.5 };
-const rightHandPos = { x: 0.3, y: -0.3, z: -0.5 };
+const leftHandPos = { x: -0.3, y: DEFAULT_STANDING_HEIGHT - 0.3, z: -0.5 };
+const rightHandPos = { x: 0.3, y: DEFAULT_STANDING_HEIGHT - 0.3, z: -0.5 };
 const HAND_MOVE_SPEED = 0.5; // meters per second
 
 function stickAxis(negKey: string, posKey: string): number {

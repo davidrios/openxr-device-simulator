@@ -98,5 +98,5 @@ Set `RUST_LOG=debug` (or `info,openxr_device_simulator_runtime=debug`) to see th
 
 ## Known gaps
 
-- Modern PBR rendering (tested with `bevy_oxr`'s `3d_scene`) reaches a running session and streams distinct per-eye frames correctly, but actual scene geometry doesn't render (background is black instead of the lit cube/plane) — likely missing depth-buffer or blend-mode support that `hello_xr`'s simpler pipeline never needed. Not yet root-caused.
 - Controller position is keyboard-driven (X/Y plane) via the web client, not real 6DoF — real gamepad/gyro support (PS5 DualSense / Switch Joy-Con via Gamepad API + WebHID) is planned but not implemented.
+- The default head pose (`device_state.rs`'s `DeviceState::default()`) starts at literal world origin `(0,0,0)` — floor level, not a standing eye height. A scene with geometry near the origin (e.g. `bevy_oxr`'s `3d_scene` example, cube centered at `y=0.5`) will render as solid black until the user moves the viewpoint up/back via WASD/Space in the web client, since the camera starts at floor level coincident with the scene's floor plane and inside the cube's bounds. Not a runtime bug — confirmed by moving the viewpoint, the scene (cube, floor, shadows, lighting) renders correctly. Worth considering a more realistic default standing height (~1.6m) so apps look reasonable before the user moves.

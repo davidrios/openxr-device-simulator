@@ -56,6 +56,17 @@ pub extern "system" fn get_properties(
         properties.tracking_properties.orientation_tracking = xr::TRUE;
         properties.tracking_properties.position_tracking = xr::TRUE;
 
+        let mut next = properties.next as *mut xr::BaseOutStructure;
+        while !next.is_null() {
+            let header = unsafe { &mut *next };
+            if header.ty == xr::StructureType::SYSTEM_HAND_TRACKING_PROPERTIES_EXT {
+                let hand_tracking =
+                    unsafe { &mut *(next as *mut xr::SystemHandTrackingPropertiesEXT) };
+                hand_tracking.supports_hand_tracking = xr::TRUE;
+            }
+            next = header.next;
+        }
+
         log::debug!("get_properties({:?}): {:?}", system_id, &properties);
         Ok(())
     })

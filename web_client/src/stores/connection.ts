@@ -1,0 +1,86 @@
+import { defineStore, acceptHMRUpdate } from 'pinia';
+import { io, type Socket } from 'socket.io-client';
+
+interface ConnectionStore {
+  isConnected: boolean;
+  isConnecting: boolean;
+  address: string | null;
+  socket: Socket | null;
+  frames: Record<number, string>;
+}
+
+export const useConnection = defineStore('connection', {
+  state: (): ConnectionStore => ({
+    isConnected: false,
+    isConnecting: false,
+    address: null,
+    socket: null,
+    frames: {},
+  }),
+
+  getters: {},
+
+  actions: {
+    connect(address: string) {
+      if (this.isConnected) {
+        return;
+      }
+
+      this.isConnecting = true;
+      this.address = address;
+      this.socket = io(address);
+
+      return new Promise((resolve, reject) => {
+        if (this.socket == null) {
+          return;
+        }
+
+        this.socket.on('connect', () => {
+          this.isConnected = true;
+          this.isConnecting = false;
+          resolve(true);
+        });
+
+        this.socket.on('connect_error', (err) => {
+          console.log('connect_error');
+          if (this.socket?.active) {
+            this.socket?.disconnect();
+          }
+
+          this.isConnecting = true;
+          this.isConnected = false;
+          reject(err);
+        });
+
+        this.socket.on('disconnect', () => {
+          console.log('disconnected');
+          this.isConnected = false;
+          this.isConnecting = false;
+        });
+
+        this.socket.on('message-back', (data: unknown) => {
+          console.log('message-back', data);
+        });
+
+        this.socket.on(
+          'frame',
+          (data: { number: number; swapchain_id: number; jpeg_b64: string }) => {
+            this.frames[data.swapchain_id] = `data:image/jpeg;base64,${data.jpeg_b64}`;
+          },
+        );
+      });
+    },
+
+    ping() {
+      this.socket?.emit('message', 'test msg');
+    },
+
+    sendLook(yaw: number, pitch: number) {
+      this.socket?.emit('look', { yaw, pitch });
+    },
+  },
+});
+
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useConnection, import.meta.hot));
+}

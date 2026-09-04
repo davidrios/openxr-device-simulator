@@ -116,7 +116,7 @@ pub extern "system" fn get_input_source_localized_name(
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SimulatedActionValue {
     Boolean(bool),
     Float(f32),

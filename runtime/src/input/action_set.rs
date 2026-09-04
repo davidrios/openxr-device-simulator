@@ -97,6 +97,10 @@ impl SimulatedActionSet {
         self.actions.push(action_id);
         Ok(())
     }
+
+    pub fn actions(&self) -> &[u64] {
+        &self.actions
+    }
 }
 
 static INSTANCE_COUNTER: atomic::AtomicU64 = atomic::AtomicU64::new(1);

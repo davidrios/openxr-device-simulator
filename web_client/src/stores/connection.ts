@@ -14,9 +14,31 @@ export interface Quat {
   w: number;
 }
 
-export interface HeadInput {
+export interface PoseInput {
   position: Vec3;
   orientation: Quat;
+}
+
+export interface ButtonsInput {
+  trigger: number;
+  squeeze: number;
+  thumbstick_x: number;
+  thumbstick_y: number;
+  thumbstick_click: boolean;
+  primary_click: boolean;
+  secondary_click: boolean;
+  menu_click: boolean;
+}
+
+export interface HandInput {
+  pose: PoseInput;
+  buttons: ButtonsInput;
+}
+
+export interface DeviceInput {
+  head: PoseInput;
+  leftHand: HandInput;
+  rightHand: HandInput;
 }
 
 interface ConnectionStore {
@@ -93,8 +115,12 @@ export const useConnection = defineStore('connection', {
       this.socket?.emit('message', 'test msg');
     },
 
-    sendInput(head: HeadInput) {
-      this.socket?.emit('input', { head });
+    sendInput(input: DeviceInput) {
+      this.socket?.emit('input', {
+        head: input.head,
+        left_hand: input.leftHand,
+        right_hand: input.rightHand,
+      });
     },
   },
 });
